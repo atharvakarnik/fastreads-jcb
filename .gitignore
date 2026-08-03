@@ -1,0 +1,26 @@
+# All local medical data
+data/
+
+# Locally generated review data
+reviews.json
+reviews.json.tmp
+reviews.csv
+notes.csv
+
+# Frontend dependencies and build output
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# macOS and editors
+.DS_Store
+.vscode/
+.idea/
