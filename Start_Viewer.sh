@@ -25,13 +25,13 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ ! -d node_modules ]; then
+if [ ! -d ui/node_modules ]; then
   echo "Installing frontend dependencies..."
-  npm install
+  npm --prefix ui install
 fi
 
 echo "Building frontend..."
-npm run build
+npm --prefix ui run build
 
 viewer_is_ready() {
   "$PY" - "$URL" <<'PY'

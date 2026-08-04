@@ -10,6 +10,8 @@ notes.csv
 # Frontend dependencies and build output
 node_modules/
 dist/
+ui/node_modules/
+ui/dist/
 
 # Python
 __pycache__/

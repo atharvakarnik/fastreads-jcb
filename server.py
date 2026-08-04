@@ -11,7 +11,7 @@ from urllib.parse import quote, unquote, urlparse
 PORT = 8000
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
-DIST_DIR = os.path.join(BASE_DIR, "dist")
+DIST_DIR = os.path.join(BASE_DIR, "ui", "dist")
 REVIEWS_PATH = os.path.join(BASE_DIR, "reviews.json")
 ALLOWED_SERIES = ("t1", "flair", "t1_overlay", "flair_overlay")
 SUBJECT_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
@@ -316,7 +316,7 @@ class Handler(SimpleHTTPRequestHandler):
             path = os.path.join(DIST_DIR, "index.html")
             if not os.path.isfile(path):
                 return self.send_text(
-                    "Frontend build not found. Run `npm install` and `npm run build` first.\n",
+                    "Frontend build not found. Run `npm --prefix ui install` and `npm --prefix ui run build` first.\n",
                     status=503,
                 )
 

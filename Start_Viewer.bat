@@ -35,9 +35,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist node_modules (
+if not exist ui\node_modules (
   echo Installing frontend dependencies...
-  call npm install
+  call npm --prefix ui install
   if errorlevel 1 (
     pause
     exit /b 1
@@ -45,7 +45,7 @@ if not exist node_modules (
 )
 
 echo Building frontend...
-call npm run build
+call npm --prefix ui run build
 if errorlevel 1 (
   pause
   exit /b 1
