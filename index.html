@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FastReads JCB</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <aside id="left">
+      <div class="label">Subject</div>
+      <div class="subjectMeta">
+        <div class="chip">ID: <span id="sid" class="mono">------</span></div>
+        <div class="chip">Index: <span id="sidx" class="mono">-</span>/<span id="scount" class="mono">-</span></div>
+      </div>
+
+      <div class="row">
+        <button id="prevBtn" type="button">Prev</button>
+        <button id="nextBtn" type="button">Next</button>
+      </div>
+
+      <div class="label">Go to ID</div>
+      <div class="row">
+        <input id="gotoInput" class="mono" type="text" placeholder="Loading IDs..." />
+        <button id="goBtn" type="button">Go</button>
+      </div>
+
+      <div class="label">Go to index (1-<span id="gotoIndexMax">?</span>)</div>
+      <div class="row">
+        <input id="gotoIndexInput" class="mono" type="text" inputmode="numeric" placeholder="Loading index..." />
+        <button id="goIndexBtn" type="button">Go</button>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="label">Review</div>
+      <div class="reviewGrid">
+        <label class="reviewField">
+          <span>Case</span>
+          <select id="caseStatus">
+            <option value="">Unset</option>
+            <option value="Positive">Positive</option>
+            <option value="Negative">Negative</option>
+            <option value="Borderline">Borderline</option>
+          </select>
+        </label>
+        <label class="checkRow">
+          <input id="flagForReview" type="checkbox" />
+          Flag for review
+        </label>
+        <label class="checkRow">
+          <input id="needsProcessingQc" type="checkbox" />
+          Needs processing QC
+        </label>
+      </div>
+
+      <div class="label notesLabel">Notes</div>
+      <textarea id="notes" placeholder="Type notes here..."></textarea>
+
+      <div class="row">
+        <button id="saveBtn" type="button">Save Review</button>
+        <button id="clearBtn" type="button">Clear This</button>
+      </div>
+
+      <div id="status" class="status"></div>
+    </aside>
+
+    <main id="viewerWrap">
+      <div id="topBar">
+        <div id="tabs" class="tabs" aria-label="Views"></div>
+        <div class="toolGroup" aria-label="Slice tools">
+          <button id="sliceToolNavigate" class="toolBtn isActive" type="button" title="Navigate slices">
+            <span>Navigate</span>
+          </button>
+          <button id="sliceToolZoom" class="toolBtn" type="button" title="Drag to zoom the active pane">
+            <span>Zoom</span>
+          </button>
+          <button id="sliceToolReset" class="toolBtn" type="button" title="Click a pane to reset zoom">
+            <span>Reset Zoom</span>
+          </button>
+          <button id="crosshairToggle" class="toolBtn isActive" type="button" title="Show or hide crosshairs" aria-pressed="true">
+            <span>Crosshair</span>
+          </button>
+        </div>
+        <div id="topStatus" class="status"></div>
+      </div>
+      <div id="gl">
+        <canvas id="niivueCanvas" class="viewerCanvas"></canvas>
+        <canvas id="toolOverlay" class="toolOverlay"></canvas>
+        <iframe id="pdfFrame" title="Subject report PDF"></iframe>
+        <div id="emptyState" class="emptyState">No view loaded.</div>
+      </div>
+    </main>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

@@ -3,7 +3,7 @@ setlocal
 
 cd /d "%~dp0"
 
-set "URL=http://127.0.0.1:8000/viewer.html"
+set "URL=http://127.0.0.1:8000/"
 
 where py >nul 2>&1
 if not errorlevel 1 (
@@ -28,15 +28,37 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo Starting PET Viewer server...
-start "PET Viewer Server" cmd /k %PY% server.py
+where npm >nul 2>&1
+if errorlevel 1 (
+  echo Node.js and npm are required to build the viewer frontend.
+  pause
+  exit /b 1
+)
+
+if not exist node_modules (
+  echo Installing frontend dependencies...
+  call npm install
+  if errorlevel 1 (
+    pause
+    exit /b 1
+  )
+)
+
+echo Building frontend...
+call npm run build
+if errorlevel 1 (
+  pause
+  exit /b 1
+)
+
+echo Starting FastReads JCB server...
+start "FastReads JCB Server" cmd /k %PY% server.py
 
 echo Waiting for server...
-powershell -NoProfile -Command "$deadline=(Get-Date).AddSeconds(15); while((Get-Date) -lt $deadline){ try { $r=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8000/viewer.html'; if($r.StatusCode -eq 200 -and $r.Content -match 'petWindowSlider' -and $r.Content -match 'centiloidReveal'){ exit 0 } } catch {}; Start-Sleep -Milliseconds 250 }; exit 1"
+powershell -NoProfile -Command "$deadline=(Get-Date).AddSeconds(15); while((Get-Date) -lt $deadline){ try { $r=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8000/'; if($r.StatusCode -eq 200 -and $r.Content -match 'FastReads JCB' -and $r.Content -match '/assets/'){ exit 0 } } catch {}; Start-Sleep -Milliseconds 250 }; exit 1"
 if errorlevel 1 (
   echo The server at %URL% did not respond with the current viewer UI.
-  echo This usually means another older PET Viewer server is already running on port 8000.
-  echo Close any old "PET Viewer Server" windows and try again.
+  echo This usually means another server is already running on port 8000.
   pause
   exit /b 1
 )
@@ -47,8 +69,8 @@ echo Opening viewer...
 start "" "%RUN_URL%"
 
 echo.
-echo PET Viewer started at:
+echo FastReads JCB started at:
 echo   %RUN_URL%
 echo.
-echo Do not close the "PET Viewer Server" window while using the viewer.
+echo Do not close the "FastReads JCB Server" window while using the viewer.
 endlocal

@@ -15,11 +15,6 @@ dist/
 __pycache__/
 *.py[cod]
 
-# Environment
-.env
-.env.*
-!.env.example
-
 # macOS and editors
 .DS_Store
 .vscode/
