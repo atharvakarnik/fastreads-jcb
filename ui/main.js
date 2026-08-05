@@ -563,33 +563,6 @@ function resetCurrentDisplayRange() {
   renderDisplayControls();
 }
 
-function applyTransparentOverlayBackground(image) {
-  const source = image?.img;
-  if (!source || !ArrayBuffer.isView(source)) return image;
-  const bytes = source instanceof Uint8Array
-    ? source
-    : new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
-  if (bytes.length < 4) return image;
-
-  let transparent = 0;
-  let opaque = 0;
-  for (let i = 0; i + 3 < bytes.length; i += 4) {
-    const red = bytes[i];
-    const green = bytes[i + 1];
-    const blue = bytes[i + 2];
-    const maxChannel = Math.max(red, green, blue);
-    const minChannel = Math.min(red, green, blue);
-    const saturation = maxChannel - minChannel;
-    const isColoredOverlay = saturation >= 18 && maxChannel >= 40;
-    bytes[i + 3] = isColoredOverlay ? 255 : 0;
-    if (isColoredOverlay) opaque += 1;
-    else transparent += 1;
-  }
-
-  image.__fastreadsJcbTransparentOverlay = { transparent, opaque };
-  return image;
-}
-
 function setPdfControlsVisible(visible) {
   pdfControls.hidden = !visible;
   pdfControlsHr.hidden = !visible;
@@ -942,7 +915,6 @@ async function loadDicomSeries(subject, tabKey, token) {
     if (token !== loadToken) return;
     const overlayImage = await loadSeriesImage(subject, tabKey, token);
     if (token !== loadToken) return;
-    applyTransparentOverlayBackground(overlayImage);
 
     removeAllVolumes();
     nv.addVolume(baseImage);
