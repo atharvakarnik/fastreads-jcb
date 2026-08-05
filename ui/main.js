@@ -7,7 +7,7 @@ const TABS = [
   { key: "flair", label: "FLAIR", type: "dicom" },
   { key: "t1_overlay", label: "T1 + Overlay", type: "dicom" },
   { key: "flair_overlay", label: "FLAIR + Overlay", type: "dicom" },
-  { key: "pdf", label: "PDF", type: "pdf" },
+  { key: "pdf", label: "PDF", type: "report" },
 ];
 
 const TAB_BY_KEY = new Map(TABS.map((tab) => [tab.key, tab]));
@@ -55,6 +55,7 @@ let currentTab = "t1";
 let desiredTab = currentTab;
 let loadToken = 0;
 let nv = null;
+let viewerInitError = null;
 let currentSliceTool = SLICE_TOOL.NAVIGATE;
 let crosshairVisible = true;
 let zoomDrag = null;
@@ -504,6 +505,10 @@ async function fetchJson(url) {
 }
 
 async function loadDicomSeries(subject, tabKey, token) {
+  if (!nv) {
+    throw new Error(viewerInitError?.message || "DICOM viewer unavailable because WebGL2 could not initialize.");
+  }
+
   showDicomCanvas();
   hideEmpty();
   removeAllVolumes();
@@ -576,11 +581,17 @@ async function loadCurrentSubject() {
 
   try {
     const tab = TAB_BY_KEY.get(currentTab);
-    if (tab.type === "pdf") {
-      showPdf(`/api/subjects/${encodeURIComponent(subject.id)}/report`);
-      hideEmpty();
-      setStatus("Ready: PDF.");
-      setTopStatus(`Subject ${subject.id} / PDF`);
+    if (tab.type === "report") {
+      const reportUrl = `/api/subjects/${encodeURIComponent(subject.id)}/report`;
+      const reportResponse = await fetch(reportUrl, { method: "GET" });
+      if (reportResponse.ok) {
+        showPdf(reportUrl);
+        hideEmpty();
+        setStatus("Ready: PDF.");
+        setTopStatus(`Subject ${subject.id} / PDF`);
+        return;
+      }
+      await loadDicomSeries(subject, currentTab, token);
       return;
     }
     await loadDicomSeries(subject, currentTab, token);
@@ -788,6 +799,13 @@ new ResizeObserver(() => {
   scheduleToolOverlayRedraw();
 }).observe($("gl"));
 
-nv = await createNiivueInstance();
 setSliceTool(SLICE_TOOL.NAVIGATE);
+try {
+  nv = await createNiivueInstance();
+} catch (error) {
+  viewerInitError = error;
+  canvas.style.display = "none";
+  toolOverlay.style.display = "none";
+  setTopStatus("DICOM viewer unavailable.", true);
+}
 await loadInitialData();

@@ -14,6 +14,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 DIST_DIR = os.path.join(BASE_DIR, "ui", "dist")
 REVIEWS_PATH = os.path.join(BASE_DIR, "reviews.json")
 ALLOWED_SERIES = ("t1", "flair", "t1_overlay", "flair_overlay")
+DICOM_SERIES = ALLOWED_SERIES + ("pdf",)
 SUBJECT_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
@@ -49,7 +50,7 @@ def list_regular_files(folder):
 
 def derive_subject_id(entry):
     filename_ids = []
-    for series_key in ALLOWED_SERIES:
+    for series_key in DICOM_SERIES:
         for filename in list_regular_files(os.path.join(entry.path, series_key)):
             file_id = initial_six_digit_id(filename)
             if file_id:
@@ -74,7 +75,10 @@ def discover_subject_records():
             key: bool(list_regular_files(os.path.join(entry.path, key)))
             for key in ALLOWED_SERIES
         }
-        available["pdf"] = os.path.isfile(os.path.join(entry.path, "report.pdf"))
+        available["pdf"] = (
+            os.path.isfile(os.path.join(entry.path, "report.pdf"))
+            or bool(list_regular_files(os.path.join(entry.path, "pdf")))
+        )
 
         subjects.append({"id": subject_id, "dir_name": entry.name, "available": available})
 
@@ -102,7 +106,7 @@ def get_subject(subject_id):
 
 def get_series_files(subject_id, series_key):
     subject = get_subject(subject_id)
-    if series_key not in ALLOWED_SERIES or not subject:
+    if series_key not in DICOM_SERIES or not subject:
         return None
     folder = os.path.join(subject_dir(subject), series_key)
     return list_regular_files(folder)
