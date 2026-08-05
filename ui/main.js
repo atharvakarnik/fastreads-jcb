@@ -41,6 +41,7 @@ const needsProcessingQcEl = $("needsProcessingQc");
 const canvas = $("niivueCanvas");
 const toolOverlay = $("toolOverlay");
 const pdfFrame = $("pdfFrame");
+const pdfPagesEl = $("pdfPages");
 const emptyState = $("emptyState");
 const glEl = $("gl");
 const sliceToolNavigateBtn = $("sliceToolNavigate");
@@ -50,8 +51,24 @@ const crosshairToggleBtn = $("crosshairToggle");
 const overlayControls = $("overlayControls");
 const overlayControlsHr = $("overlayControlsHr");
 const overlayVisibleEl = $("overlayVisible");
-const overlayTransparencyEl = $("overlayTransparency");
-const overlayTransparencyValue = $("overlayTransparencyValue");
+const overlayOpacityEl = $("overlayOpacity");
+const overlayOpacityValue = $("overlayOpacityValue");
+const displayControls = $("displayControls");
+const displayControlsHr = $("displayControlsHr");
+const displaySourceEl = $("displaySource");
+const displayRangeMinEl = $("displayRangeMin");
+const displayRangeMaxEl = $("displayRangeMax");
+const displayRangeResetBtn = $("displayRangeReset");
+const displayWindowSlider = $("displayWindowSlider");
+const displayWindowInput = $("displayWindowInput");
+const displayLevelSlider = $("displayLevelSlider");
+const displayLevelInput = $("displayLevelInput");
+const pdfControls = $("pdfControls");
+const pdfControlsHr = $("pdfControlsHr");
+const pdfZoomSlider = $("pdfZoomSlider");
+const pdfZoomInput = $("pdfZoomInput");
+const pdfFitWidthBtn = $("pdfFitWidthBtn");
+const pdfActualSizeBtn = $("pdfActualSizeBtn");
 const toolOverlayCtx = toolOverlay.getContext("2d");
 
 let subjects = [];
@@ -66,9 +83,12 @@ let currentSliceTool = SLICE_TOOL.NAVIGATE;
 let crosshairVisible = true;
 let zoomDrag = null;
 let overlayDisplayStateByTab = {
-  t1_overlay: { visible: true, transparency: 0 },
-  flair_overlay: { visible: true, transparency: 0 },
+  t1_overlay: { visible: true, opacity: 1 },
+  flair_overlay: { visible: true, opacity: 1 },
 };
+let loadedDisplaySources = [];
+let selectedDisplaySourceId = "";
+let pdfZoom = 1;
 let notesMap = readJsonLocalStorage(NOTES_LS_KEY);
 let reviewMap = normalizeReviewMap(readJsonLocalStorage(REVIEW_LS_KEY));
 let sliceZoomState = {
@@ -346,6 +366,258 @@ function setVolumeOpacity(index, opacity) {
   redrawViewer();
 }
 
+function finiteNumber(value) {
+  if (typeof value === "string" && value.trim() === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function validRange(min, max) {
+  return Number.isFinite(min) && Number.isFinite(max) && max > min;
+}
+
+function normalizedRange(min, max) {
+  const nextMin = finiteNumber(min);
+  const nextMax = finiteNumber(max);
+  if (nextMin === null || nextMax === null) return null;
+  return validRange(nextMin, nextMax)
+    ? { min: nextMin, max: nextMax }
+    : { min: nextMax, max: nextMin };
+}
+
+function imageDefaultRange(image) {
+  const candidates = [
+    [image?.cal_min, image?.cal_max],
+    [image?.robust_min, image?.robust_max],
+    [image?.global_min, image?.global_max],
+  ];
+
+  for (const [min, max] of candidates) {
+    const range = normalizedRange(min, max);
+    if (range && validRange(range.min, range.max)) return range;
+  }
+
+  return null;
+}
+
+function displayRangeForSource(source) {
+  return source?.range || source?.defaultRange || null;
+}
+
+function displayWindowLevelForRange(range) {
+  if (!range || !validRange(range.min, range.max)) return null;
+  return {
+    window: range.max - range.min,
+    level: (range.max + range.min) / 2,
+  };
+}
+
+function rangeFromWindowLevel(windowValue, levelValue) {
+  const width = finiteNumber(windowValue);
+  const level = finiteNumber(levelValue);
+  if (width === null || level === null || !(width > 0)) return null;
+  return {
+    min: level - width / 2,
+    max: level + width / 2,
+  };
+}
+
+function formatDisplayNumber(value) {
+  if (!Number.isFinite(value)) return "";
+  const abs = Math.abs(value);
+  if (abs !== 0 && abs < 0.001) return value.toExponential(3);
+  if (abs >= 1000) return value.toFixed(0);
+  if (abs >= 100) return value.toFixed(1);
+  if (abs >= 10) return value.toFixed(2);
+  return value.toFixed(3);
+}
+
+function displaySliderStep(range) {
+  if (!range || !validRange(range.min, range.max)) return 1;
+  return Math.max((range.max - range.min) / 500, 0.001);
+}
+
+function tabSourceLabel(subject, tabKey) {
+  const tab = TAB_BY_KEY.get(tabKey);
+  const subjectId = subject?.id || "Subject";
+  if (tabKey === "t1_overlay") return `${subjectId} T1 overlay`;
+  if (tabKey === "flair_overlay") return `${subjectId} FLAIR overlay`;
+  return `${subjectId} ${tab?.label || tabKey}`;
+}
+
+function makeDisplaySource(subject, tabKey, volumeIndex, image) {
+  const defaultRange = imageDefaultRange(image);
+  return {
+    id: `${tabKey}:${volumeIndex}`,
+    label: tabSourceLabel(subject, tabKey),
+    volumeIndex,
+    image,
+    defaultRange,
+    range: null,
+  };
+}
+
+function currentDisplaySource() {
+  return loadedDisplaySources.find((source) => source.id === selectedDisplaySourceId) || null;
+}
+
+function setLoadedDisplaySources(sources) {
+  loadedDisplaySources = Array.isArray(sources) ? sources.filter(Boolean) : [];
+  if (!loadedDisplaySources.some((source) => source.id === selectedDisplaySourceId)) {
+    selectedDisplaySourceId = loadedDisplaySources[0]?.id || "";
+  }
+  renderDisplayControls();
+}
+
+function setDisplayControlInputsDisabled(disabled) {
+  displayRangeMinEl.disabled = disabled;
+  displayRangeMaxEl.disabled = disabled;
+  displayRangeResetBtn.disabled = disabled;
+  displayWindowSlider.disabled = disabled;
+  displayWindowInput.disabled = disabled;
+  displayLevelSlider.disabled = disabled;
+  displayLevelInput.disabled = disabled;
+}
+
+function renderDisplayControls() {
+  const showControls = isOverlayTab(currentTab) && loadedDisplaySources.length > 0;
+  displayControls.hidden = !showControls;
+  displayControlsHr.hidden = !showControls;
+  displaySourceEl.innerHTML = "";
+
+  if (!showControls) return;
+
+  for (const source of loadedDisplaySources) {
+    const option = document.createElement("option");
+    option.value = source.id;
+    option.textContent = source.label;
+    displaySourceEl.appendChild(option);
+  }
+  displaySourceEl.value = selectedDisplaySourceId;
+
+  const source = currentDisplaySource();
+  const range = displayRangeForSource(source);
+  const windowLevel = displayWindowLevelForRange(range);
+  if (!source || !range || !windowLevel) {
+    setDisplayControlInputsDisabled(true);
+    displayRangeMinEl.value = "";
+    displayRangeMaxEl.value = "";
+    displayWindowSlider.value = "";
+    displayWindowInput.value = "";
+    displayLevelSlider.value = "";
+    displayLevelInput.value = "";
+    return;
+  }
+
+  setDisplayControlInputsDisabled(false);
+  const defaultRange = source.defaultRange || range;
+  const defaultWidth = Math.max(defaultRange.max - defaultRange.min, displaySliderStep(defaultRange));
+  const minBound = defaultRange.min - defaultWidth;
+  const maxBound = defaultRange.max + defaultWidth;
+  const maxWindow = Math.max(defaultWidth * 3, windowLevel.window);
+  const step = displaySliderStep(defaultRange);
+
+  displayRangeMinEl.value = formatDisplayNumber(range.min);
+  displayRangeMaxEl.value = formatDisplayNumber(range.max);
+
+  displayWindowSlider.min = String(step);
+  displayWindowSlider.max = String(maxWindow);
+  displayWindowSlider.step = String(step);
+  displayWindowSlider.value = String(windowLevel.window);
+  displayWindowInput.value = formatDisplayNumber(windowLevel.window);
+
+  displayLevelSlider.min = String(minBound);
+  displayLevelSlider.max = String(maxBound);
+  displayLevelSlider.step = String(step);
+  displayLevelSlider.value = String(windowLevel.level);
+  displayLevelInput.value = formatDisplayNumber(windowLevel.level);
+}
+
+function applyDisplayRangeToSource(source) {
+  const range = displayRangeForSource(source);
+  if (!source || !range || !nv?.volumes?.[source.volumeIndex]) return;
+  try {
+    nv.volumes[source.volumeIndex].cal_min = range.min;
+    nv.volumes[source.volumeIndex].cal_max = range.max;
+    nv.updateGLVolume?.();
+  } catch {
+    redrawViewer();
+  }
+  redrawViewer();
+}
+
+function updateCurrentDisplayRange(range) {
+  const source = currentDisplaySource();
+  const normalized = normalizedRange(range?.min, range?.max);
+  if (!source || !normalized || !validRange(normalized.min, normalized.max)) return;
+  source.range = normalized;
+  applyDisplayRangeToSource(source);
+  renderDisplayControls();
+}
+
+function resetCurrentDisplayRange() {
+  const source = currentDisplaySource();
+  if (!source) return;
+  source.range = null;
+  applyDisplayRangeToSource(source);
+  renderDisplayControls();
+}
+
+function applyTransparentOverlayBackground(image) {
+  const source = image?.img;
+  if (!source || !ArrayBuffer.isView(source)) return image;
+  const bytes = source instanceof Uint8Array
+    ? source
+    : new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
+  if (bytes.length < 4) return image;
+
+  let transparent = 0;
+  let opaque = 0;
+  for (let i = 0; i + 3 < bytes.length; i += 4) {
+    const red = bytes[i];
+    const green = bytes[i + 1];
+    const blue = bytes[i + 2];
+    const maxChannel = Math.max(red, green, blue);
+    const minChannel = Math.min(red, green, blue);
+    const saturation = maxChannel - minChannel;
+    const isColoredOverlay = saturation >= 18 && maxChannel >= 40;
+    bytes[i + 3] = isColoredOverlay ? 255 : 0;
+    if (isColoredOverlay) opaque += 1;
+    else transparent += 1;
+  }
+
+  image.__fastreadsJcbTransparentOverlay = { transparent, opaque };
+  return image;
+}
+
+function setPdfControlsVisible(visible) {
+  pdfControls.hidden = !visible;
+  pdfControlsHr.hidden = !visible;
+}
+
+function setPdfZoom(nextZoom) {
+  pdfZoom = Math.max(0.5, Math.min(2.5, Number(nextZoom) || 1));
+  pdfZoomSlider.value = String(pdfZoom);
+  pdfZoomInput.value = String(Math.round(pdfZoom * 100));
+  updatePdfPageSizes();
+}
+
+function updatePdfPageSizes() {
+  for (const image of pdfPagesEl.querySelectorAll(".pdfPageImage")) {
+    const naturalWidth = image.naturalWidth || Number(image.dataset.naturalWidth) || 900;
+    image.dataset.naturalWidth = String(naturalWidth);
+    image.style.width = `${naturalWidth * pdfZoom}px`;
+  }
+}
+
+function fitPdfWidth() {
+  const firstImage = pdfPagesEl.querySelector(".pdfPageImage");
+  if (!firstImage) return;
+  const naturalWidth = firstImage.naturalWidth || Number(firstImage.dataset.naturalWidth) || 1;
+  const availableWidth = Math.max(120, pdfPagesEl.clientWidth - 48);
+  setPdfZoom(availableWidth / naturalWidth);
+}
+
 function setSliceTool(nextTool) {
   if (!Object.values(SLICE_TOOL).includes(nextTool)) return;
   currentSliceTool = nextTool;
@@ -474,7 +746,7 @@ function baseTabForOverlay(tabKey) {
 }
 
 function currentOverlayDisplayState() {
-  return overlayDisplayStateByTab[currentTab] || { visible: true, transparency: 0 };
+  return overlayDisplayStateByTab[currentTab] || { visible: true, opacity: 1 };
 }
 
 function firstAvailableTab(subject) {
@@ -509,23 +781,78 @@ function showDicomCanvas() {
   toolOverlay.style.display = "block";
   pdfFrame.style.display = "none";
   pdfFrame.removeAttribute("src");
+  pdfPagesEl.style.display = "none";
+  pdfPagesEl.innerHTML = "";
+  setPdfControlsVisible(false);
 }
 
 function showPdf(url) {
-  glEl.classList.remove("isReportView");
+  glEl.classList.add("isReportView");
+  setLoadedDisplaySources([]);
   removeAllVolumes();
   canvas.style.display = "none";
   toolOverlay.style.display = "none";
+  pdfPagesEl.style.display = "none";
+  pdfPagesEl.innerHTML = "";
   pdfFrame.style.display = "block";
   pdfFrame.src = url;
+  setPdfControlsVisible(true);
+  setPdfZoom(pdfZoom);
 }
 
-function showEmpty(message, isError = false) {
+async function showReportPages(subject, token) {
+  const pagesPayload = await fetchJson(`/api/subjects/${encodeURIComponent(subject.id)}/report-pages`);
+  if (token !== loadToken) return false;
+  const pages = Array.isArray(pagesPayload.pages) ? pagesPayload.pages : [];
+  if (!pages.length) throw new Error("No report pages found.");
+
+  glEl.classList.add("isReportView");
+  setLoadedDisplaySources([]);
   removeAllVolumes();
   canvas.style.display = "none";
   toolOverlay.style.display = "none";
   pdfFrame.style.display = "none";
   pdfFrame.removeAttribute("src");
+  pdfPagesEl.innerHTML = "";
+  pdfPagesEl.style.display = "block";
+  setPdfControlsVisible(true);
+
+  const imageLoads = [];
+  for (const page of pages) {
+    const pageEl = document.createElement("div");
+    pageEl.className = "pdfPage";
+    const image = document.createElement("img");
+    image.className = "pdfPageImage";
+    image.alt = page.name || `Report page ${Number(page.index) + 1}`;
+    image.addEventListener("load", updatePdfPageSizes, { once: true });
+    imageLoads.push(new Promise((resolve) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", resolve, { once: true });
+    }));
+    image.src = page.url;
+    pageEl.appendChild(image);
+    pdfPagesEl.appendChild(pageEl);
+  }
+
+  setPdfZoom(pdfZoom);
+  await Promise.all(imageLoads);
+  if (token !== loadToken) return false;
+  updatePdfPageSizes();
+  pdfPagesEl.scrollTo({ top: 0, left: 0 });
+  return true;
+}
+
+function showEmpty(message, isError = false) {
+  glEl.classList.remove("isReportView");
+  setLoadedDisplaySources([]);
+  removeAllVolumes();
+  canvas.style.display = "none";
+  toolOverlay.style.display = "none";
+  pdfFrame.style.display = "none";
+  pdfFrame.removeAttribute("src");
+  pdfPagesEl.style.display = "none";
+  pdfPagesEl.innerHTML = "";
+  setPdfControlsVisible(false);
   emptyState.textContent = message;
   emptyState.style.display = "flex";
   setStatus(message, isError);
@@ -590,8 +917,9 @@ async function loadSeriesImage(subject, tabKey, token) {
 function applyOverlayDisplaySettings() {
   if (!isOverlayTab(currentTab)) return;
   const state = currentOverlayDisplayState();
-  const opacity = state.visible ? 1 - state.transparency : 0;
-  setVolumeOpacity(1, opacity);
+  const overlayOpacity = state.visible ? state.opacity : 0;
+  setVolumeOpacity(0, 1);
+  setVolumeOpacity(1, overlayOpacity);
 }
 
 async function loadDicomSeries(subject, tabKey, token) {
@@ -601,6 +929,7 @@ async function loadDicomSeries(subject, tabKey, token) {
 
   showDicomCanvas();
   hideEmpty();
+  setLoadedDisplaySources([]);
   removeAllVolumes();
   setStatus(`Loading ${TAB_BY_KEY.get(tabKey).label}...`);
   setTopStatus(`Subject ${subject.id} / ${TAB_BY_KEY.get(tabKey).label}`);
@@ -613,10 +942,15 @@ async function loadDicomSeries(subject, tabKey, token) {
     if (token !== loadToken) return;
     const overlayImage = await loadSeriesImage(subject, tabKey, token);
     if (token !== loadToken) return;
+    applyTransparentOverlayBackground(overlayImage);
 
     removeAllVolumes();
     nv.addVolume(baseImage);
     nv.addVolume(overlayImage);
+    setLoadedDisplaySources([
+      makeDisplaySource(subject, baseKey, 0, baseImage),
+      makeDisplaySource(subject, tabKey, 1, overlayImage),
+    ]);
     applyOverlayDisplaySettings();
     redrawViewer();
     setStatus(`Ready: ${TAB_BY_KEY.get(tabKey).label}.`);
@@ -627,6 +961,7 @@ async function loadDicomSeries(subject, tabKey, token) {
   if (token !== loadToken) return;
   removeAllVolumes();
   nv.addVolume(image);
+  setLoadedDisplaySources([makeDisplaySource(subject, tabKey, 0, image)]);
   redrawViewer();
   setStatus(`Ready: ${TAB_BY_KEY.get(tabKey).label}.`);
 }
@@ -664,7 +999,11 @@ async function loadCurrentSubject() {
         setTopStatus(`Subject ${subject.id} / PDF`);
         return;
       }
-      await loadDicomSeries(subject, currentTab, token);
+      await showReportPages(subject, token);
+      if (token !== loadToken) return;
+      hideEmpty();
+      setStatus("Ready: PDF.");
+      setTopStatus(`Subject ${subject.id} / PDF`);
       return;
     }
     await loadDicomSeries(subject, currentTab, token);
@@ -698,8 +1037,8 @@ function renderOverlayControls() {
   overlayControls.hidden = !showControls;
   overlayControlsHr.hidden = !showControls;
   overlayVisibleEl.checked = state.visible;
-  overlayTransparencyEl.value = String(state.transparency);
-  overlayTransparencyValue.textContent = state.transparency.toFixed(2);
+  overlayOpacityEl.value = String(state.opacity);
+  overlayOpacityValue.textContent = state.opacity.toFixed(2);
 }
 
 function loadReviewControls(subjectId) {
@@ -868,12 +1207,61 @@ overlayVisibleEl.addEventListener("change", () => {
   applyOverlayDisplaySettings();
 });
 
-overlayTransparencyEl.addEventListener("input", () => {
+overlayOpacityEl.addEventListener("input", () => {
   const state = currentOverlayDisplayState();
-  state.transparency = Number(overlayTransparencyEl.value);
-  overlayTransparencyValue.textContent = state.transparency.toFixed(2);
+  state.opacity = Number(overlayOpacityEl.value);
+  overlayOpacityValue.textContent = state.opacity.toFixed(2);
   applyOverlayDisplaySettings();
 });
+
+displaySourceEl.addEventListener("change", () => {
+  selectedDisplaySourceId = displaySourceEl.value;
+  renderDisplayControls();
+});
+
+displayRangeMinEl.addEventListener("change", () => {
+  updateCurrentDisplayRange({
+    min: Number(displayRangeMinEl.value),
+    max: Number(displayRangeMaxEl.value),
+  });
+});
+
+displayRangeMaxEl.addEventListener("change", () => {
+  updateCurrentDisplayRange({
+    min: Number(displayRangeMinEl.value),
+    max: Number(displayRangeMaxEl.value),
+  });
+});
+
+displayWindowSlider.addEventListener("input", () => {
+  const range = rangeFromWindowLevel(displayWindowSlider.value, displayLevelSlider.value || displayLevelInput.value);
+  if (range) updateCurrentDisplayRange(range);
+});
+
+displayWindowInput.addEventListener("change", () => {
+  const range = rangeFromWindowLevel(displayWindowInput.value, displayLevelInput.value || displayLevelSlider.value);
+  if (range) updateCurrentDisplayRange(range);
+});
+
+displayLevelSlider.addEventListener("input", () => {
+  const range = rangeFromWindowLevel(displayWindowSlider.value || displayWindowInput.value, displayLevelSlider.value);
+  if (range) updateCurrentDisplayRange(range);
+});
+
+displayLevelInput.addEventListener("change", () => {
+  const range = rangeFromWindowLevel(displayWindowInput.value || displayWindowSlider.value, displayLevelInput.value);
+  if (range) updateCurrentDisplayRange(range);
+});
+
+displayRangeResetBtn.addEventListener("click", resetCurrentDisplayRange);
+
+pdfZoomSlider.addEventListener("input", () => setPdfZoom(Number(pdfZoomSlider.value)));
+
+pdfZoomInput.addEventListener("change", () => setPdfZoom(Number(pdfZoomInput.value) / 100));
+
+pdfFitWidthBtn.addEventListener("click", fitPdfWidth);
+
+pdfActualSizeBtn.addEventListener("click", () => setPdfZoom(1));
 
 clearBtn.addEventListener("click", () => {
   if (!currentId) return;
@@ -893,6 +1281,7 @@ new ResizeObserver(() => {
   try {
     nv?.resizeListener?.();
   } catch {}
+  updatePdfPageSizes();
   scheduleToolOverlayRedraw();
 }).observe($("gl"));
 

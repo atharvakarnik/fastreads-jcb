@@ -40,13 +40,65 @@
           Show overlay
         </label>
         <label class="sliderField">
-          <span>Transparency</span>
-          <input id="overlayTransparency" type="range" min="0" max="1" step="0.05" value="0" />
+          <span>Opacity</span>
+          <input id="overlayOpacity" type="range" min="0" max="1" step="0.05" value="1" />
         </label>
-        <div class="status">Value: <span id="overlayTransparencyValue" class="mono">0.00</span></div>
+        <div class="status">Value: <span id="overlayOpacityValue" class="mono">1.00</span></div>
       </section>
 
       <div id="overlayControlsHr" class="hr" hidden></div>
+
+      <section id="displayControls" class="displayControls" hidden>
+        <div class="label">Image display</div>
+        <label class="displaySourceField">
+          <span>Source</span>
+          <select id="displaySource"></select>
+        </label>
+        <div class="rangeGrid">
+          <label class="rangeField">
+            <span>Min</span>
+            <input id="displayRangeMin" class="mono" type="number" step="any" inputmode="decimal" />
+          </label>
+          <label class="rangeField">
+            <span>Max</span>
+            <input id="displayRangeMax" class="mono" type="number" step="any" inputmode="decimal" />
+          </label>
+          <button id="displayRangeReset" class="smallBtn" type="button">Auto</button>
+        </div>
+        <label class="sliderField">
+          <span>Window</span>
+          <div class="sliderRow">
+            <input id="displayWindowSlider" type="range" step="any" />
+            <input id="displayWindowInput" class="mono" type="number" step="any" inputmode="decimal" />
+          </div>
+        </label>
+        <label class="sliderField">
+          <span>Level</span>
+          <div class="sliderRow">
+            <input id="displayLevelSlider" type="range" step="any" />
+            <input id="displayLevelInput" class="mono" type="number" step="any" inputmode="decimal" />
+          </div>
+        </label>
+      </section>
+
+      <div id="displayControlsHr" class="hr" hidden></div>
+
+      <section id="pdfControls" class="pdfControls" hidden>
+        <div class="label">PDF display</div>
+        <label class="sliderField">
+          <span>Zoom</span>
+          <div class="sliderRow">
+            <input id="pdfZoomSlider" type="range" min="0.5" max="2.5" step="0.05" value="1" />
+            <input id="pdfZoomInput" class="mono" type="number" min="50" max="250" step="5" value="100" inputmode="numeric" />
+          </div>
+        </label>
+        <div class="row compactRow">
+          <button id="pdfFitWidthBtn" class="smallBtn" type="button">Fit Width</button>
+          <button id="pdfActualSizeBtn" class="smallBtn" type="button">100%</button>
+        </div>
+      </section>
+
+      <div id="pdfControlsHr" class="hr" hidden></div>
 
       <div class="label">Review</div>
       <div class="reviewGrid">
@@ -103,6 +155,7 @@
         <canvas id="niivueCanvas" class="viewerCanvas"></canvas>
         <canvas id="toolOverlay" class="toolOverlay"></canvas>
         <iframe id="pdfFrame" title="Subject report PDF"></iframe>
+        <div id="pdfPages" class="pdfPages" aria-label="PDF pages"></div>
         <div id="emptyState" class="emptyState">No view loaded.</div>
       </div>
     </main>

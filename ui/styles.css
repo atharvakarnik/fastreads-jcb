@@ -14,6 +14,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   width: 100vw;
@@ -62,6 +66,7 @@ body {
 .viewerCanvas,
 .toolOverlay,
 #pdfFrame,
+#pdfPages,
 .emptyState {
   position: absolute;
   inset: 0;
@@ -75,7 +80,8 @@ body {
 }
 
 #gl.isReportView .viewerCanvas {
-  transform: rotate(180deg);
+  transform: rotate(180deg) scaleX(-1);
+  transform-origin: center;
 }
 
 .toolOverlay {
@@ -90,6 +96,30 @@ body {
   border: 0;
   display: none;
   background: #f6f7f8;
+}
+
+#pdfPages {
+  display: none;
+  overflow: auto;
+  padding: 24px;
+  background: #2a2d31;
+}
+
+.pdfPage {
+  width: max-content;
+  margin: 0 auto 24px;
+  background: #f6f7f8;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
+}
+
+.pdfPage:last-child {
+  margin-bottom: 0;
+}
+
+.pdfPageImage {
+  display: block;
+  max-width: none;
+  height: auto;
 }
 
 .emptyState {
@@ -108,6 +138,10 @@ body {
   margin: 10px 0;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.compactRow {
+  margin: 0;
 }
 
 .subjectMeta {
@@ -248,11 +282,15 @@ textarea {
   gap: 8px;
 }
 
-.overlayControls {
+.overlayControls,
+.displayControls,
+.pdfControls {
   display: grid;
   gap: 10px;
 }
 
+.displaySourceField,
+.rangeField,
 .sliderField {
   display: flex;
   flex-direction: column;
@@ -261,7 +299,37 @@ textarea {
   font-size: 12px;
 }
 
-.sliderField input {
+.displaySourceField select,
+.rangeField input {
+  width: 100%;
+}
+
+.rangeGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.smallBtn {
+  padding-inline: 10px;
+}
+
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sliderRow input[type="range"] {
+  flex: 1;
+}
+
+.sliderRow input[type="number"] {
+  width: 106px;
+}
+
+.sliderField input[type="range"] {
   width: 100%;
   padding: 0;
 }

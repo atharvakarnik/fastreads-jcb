@@ -4,7 +4,9 @@ import mimetypes
 import os
 import posixpath
 import re
+import struct
 import tempfile
+import zlib
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import quote, unquote, urlparse
 
@@ -112,6 +114,141 @@ def get_series_files(subject_id, series_key):
     return list_regular_files(folder)
 
 
+def read_dicom_value(data, pos, explicit_vr, little_endian=True):
+    endian = "<" if little_endian else ">"
+    if pos + 8 > len(data):
+        return None
+    group, element = struct.unpack_from(f"{endian}HH", data, pos)
+    pos += 4
+    if explicit_vr:
+        vr = data[pos:pos + 2].decode("ascii", errors="replace")
+        pos += 2
+        if vr in {"OB", "OD", "OF", "OL", "OV", "OW", "SQ", "UC", "UR", "UT", "UN"}:
+            pos += 2
+            length = struct.unpack_from(f"{endian}I", data, pos)[0]
+            pos += 4
+        else:
+            length = struct.unpack_from(f"{endian}H", data, pos)[0]
+            pos += 2
+    else:
+        vr = None
+        length = struct.unpack_from(f"{endian}I", data, pos)[0]
+        pos += 4
+
+    if length == 0xFFFFFFFF:
+        raise ValueError("Encapsulated DICOM pixel data is not supported for report previews.")
+    value = data[pos:pos + length]
+    pos += length + (length % 2)
+    return (group, element), vr, value, pos
+
+
+def dicom_text(value):
+    return value.decode("ascii", errors="ignore").strip(" \0")
+
+
+def dicom_uint(value, little_endian=True):
+    endian = "<" if little_endian else ">"
+    if len(value) < 2:
+        return None
+    return struct.unpack_from(f"{endian}H", value, 0)[0]
+
+
+def png_chunk(kind, payload):
+    return (
+        struct.pack(">I", len(payload))
+        + kind
+        + payload
+        + struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF)
+    )
+
+
+def rgb_png_bytes(width, height, rgb):
+    stride = width * 3
+    raw = bytearray()
+    for row in range(height):
+        raw.append(0)
+        start = row * stride
+        raw.extend(rgb[start:start + stride])
+
+    header = b"\x89PNG\r\n\x1a\n"
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        header
+        + png_chunk(b"IHDR", ihdr)
+        + png_chunk(b"IDAT", zlib.compress(bytes(raw), level=6))
+        + png_chunk(b"IEND", b"")
+    )
+
+
+def dicom_report_image(path):
+    with open(path, "rb") as handle:
+        data = handle.read()
+    if len(data) < 132 or data[128:132] != b"DICM":
+        raise ValueError("Not a supported DICOM file.")
+
+    pos = 132
+    transfer_syntax = "1.2.840.10008.1.2.1"
+    while pos < len(data):
+        parsed = read_dicom_value(data, pos, explicit_vr=True, little_endian=True)
+        if parsed is None:
+            break
+        tag, _vr, value, pos = parsed
+        if tag == (0x0002, 0x0010):
+            transfer_syntax = dicom_text(value)
+        if tag[0] != 0x0002:
+            break
+
+    explicit_vr = transfer_syntax != "1.2.840.10008.1.2"
+    little_endian = transfer_syntax != "1.2.840.10008.1.2.2"
+    values = {}
+    pixel_data = None
+    while pos < len(data):
+        parsed = read_dicom_value(data, pos, explicit_vr=explicit_vr, little_endian=little_endian)
+        if parsed is None:
+            break
+        tag, _vr, value, pos = parsed
+        values[tag] = value
+        if tag == (0x7FE0, 0x0010):
+            pixel_data = value
+            break
+
+    rows = dicom_uint(values.get((0x0028, 0x0010), b""), little_endian)
+    cols = dicom_uint(values.get((0x0028, 0x0011), b""), little_endian)
+    samples = dicom_uint(values.get((0x0028, 0x0002), b"\x01\x00"), little_endian) or 1
+    bits_allocated = dicom_uint(values.get((0x0028, 0x0100), b""), little_endian)
+    photometric = dicom_text(values.get((0x0028, 0x0004), b""))
+    planar_config = dicom_uint(values.get((0x0028, 0x0006), b"\x00\x00"), little_endian) or 0
+
+    if not rows or not cols or bits_allocated != 8 or pixel_data is None:
+        raise ValueError("Unsupported DICOM report image.")
+
+    expected = rows * cols * samples
+    pixel_data = pixel_data[:expected]
+    if samples == 3 and photometric == "RGB":
+        if planar_config == 1:
+            plane_size = rows * cols
+            interleaved = bytearray(expected)
+            for i in range(plane_size):
+                interleaved[i * 3:i * 3 + 3] = (
+                    pixel_data[i],
+                    pixel_data[i + plane_size],
+                    pixel_data[i + plane_size * 2],
+                )
+            pixel_data = bytes(interleaved)
+        return cols, rows, pixel_data
+
+    if samples == 1 and photometric in {"MONOCHROME1", "MONOCHROME2"}:
+        if photometric == "MONOCHROME1":
+            pixel_data = bytes(255 - value for value in pixel_data)
+        rgb = bytearray(rows * cols * 3)
+        for index, value in enumerate(pixel_data[:rows * cols]):
+            offset = index * 3
+            rgb[offset:offset + 3] = (value, value, value)
+        return cols, rows, bytes(rgb)
+
+    raise ValueError("Unsupported DICOM report color format.")
+
+
 def load_reviews():
     if not os.path.isfile(REVIEWS_PATH):
         return {}
@@ -209,6 +346,12 @@ class Handler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[:2] == ["api", "subjects"] and parts[3] == "report":
             return self.send_report(parts[2])
 
+        if len(parts) == 4 and parts[:2] == ["api", "subjects"] and parts[3] == "report-pages":
+            return self.send_report_pages(parts[2])
+
+        if len(parts) == 5 and parts[:2] == ["api", "subjects"] and parts[3] == "report-pages":
+            return self.send_report_page(parts[2], parts[4])
+
         return self.serve_frontend(parsed.path)
 
     def do_POST(self):
@@ -289,6 +432,53 @@ class Handler(SimpleHTTPRequestHandler):
         if os.path.commonpath([root, path]) != root or not os.path.isfile(path):
             return self.send_error(404, "No report PDF for this subject")
         return self.send_file(path, "application/pdf")
+
+    def send_report_pages(self, subject_id):
+        files = get_series_files(subject_id, "pdf")
+        if files is None:
+            return self.send_error(404, "Unknown subject")
+        if not files:
+            return self.send_error(404, "No DICOM report pages for this subject")
+
+        pages = [
+            {
+                "index": index,
+                "name": filename,
+                "url": f"/api/subjects/{quote(subject_id, safe='')}/report-pages/{index}.png",
+            }
+            for index, filename in enumerate(files)
+        ]
+        return self.send_json({"pages": pages})
+
+    def send_report_page(self, subject_id, page_name):
+        match = re.fullmatch(r"(\d+)\.png", page_name)
+        if not match:
+            return self.send_error(404, "Unknown report page")
+        files = get_series_files(subject_id, "pdf")
+        if files is None:
+            return self.send_error(404, "Unknown subject")
+        index = int(match.group(1))
+        if index < 0 or index >= len(files):
+            return self.send_error(404, "Unknown report page")
+
+        subject = get_subject(subject_id)
+        filename = files[index]
+        path = os.path.realpath(os.path.join(subject_dir(subject), "pdf", filename))
+        root = os.path.realpath(os.path.join(subject_dir(subject), "pdf"))
+        if os.path.commonpath([root, path]) != root or not os.path.isfile(path):
+            return self.send_error(404, "Unknown report page")
+
+        try:
+            width, height, rgb = dicom_report_image(path)
+            data = rgb_png_bytes(width, height, rgb)
+        except (OSError, ValueError):
+            return self.send_error(415, "Unsupported report page DICOM")
+
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def send_file(self, path, content_type):
         try:
