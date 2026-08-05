@@ -74,6 +74,10 @@ body {
   background: #000;
 }
 
+#gl.isReportView .viewerCanvas {
+  transform: rotate(180deg);
+}
+
 .toolOverlay {
   z-index: 2;
   pointer-events: none;
@@ -242,6 +246,24 @@ textarea {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.overlayControls {
+  display: grid;
+  gap: 10px;
+}
+
+.sliderField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sliderField input {
+  width: 100%;
+  padding: 0;
 }
 
 @media (max-width: 760px) {

@@ -33,6 +33,21 @@
 
       <div class="hr"></div>
 
+      <section id="overlayControls" class="overlayControls" hidden>
+        <div class="label">Overlay display</div>
+        <label class="checkRow">
+          <input id="overlayVisible" type="checkbox" checked />
+          Show overlay
+        </label>
+        <label class="sliderField">
+          <span>Transparency</span>
+          <input id="overlayTransparency" type="range" min="0" max="1" step="0.05" value="0" />
+        </label>
+        <div class="status">Value: <span id="overlayTransparencyValue" class="mono">0.00</span></div>
+      </section>
+
+      <div id="overlayControlsHr" class="hr" hidden></div>
+
       <div class="label">Review</div>
       <div class="reviewGrid">
         <label class="reviewField">

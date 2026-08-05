@@ -42,10 +42,16 @@ const canvas = $("niivueCanvas");
 const toolOverlay = $("toolOverlay");
 const pdfFrame = $("pdfFrame");
 const emptyState = $("emptyState");
+const glEl = $("gl");
 const sliceToolNavigateBtn = $("sliceToolNavigate");
 const sliceToolZoomBtn = $("sliceToolZoom");
 const sliceToolResetBtn = $("sliceToolReset");
 const crosshairToggleBtn = $("crosshairToggle");
+const overlayControls = $("overlayControls");
+const overlayControlsHr = $("overlayControlsHr");
+const overlayVisibleEl = $("overlayVisible");
+const overlayTransparencyEl = $("overlayTransparency");
+const overlayTransparencyValue = $("overlayTransparencyValue");
 const toolOverlayCtx = toolOverlay.getContext("2d");
 
 let subjects = [];
@@ -59,6 +65,10 @@ let viewerInitError = null;
 let currentSliceTool = SLICE_TOOL.NAVIGATE;
 let crosshairVisible = true;
 let zoomDrag = null;
+let overlayDisplayStateByTab = {
+  t1_overlay: { visible: true, transparency: 0 },
+  flair_overlay: { visible: true, transparency: 0 },
+};
 let notesMap = readJsonLocalStorage(NOTES_LS_KEY);
 let reviewMap = normalizeReviewMap(readJsonLocalStorage(REVIEW_LS_KEY));
 let sliceZoomState = {
@@ -323,6 +333,19 @@ function setCrosshairVisible(nextVisible) {
   redrawViewer();
 }
 
+function setVolumeOpacity(index, opacity) {
+  if (!nv || index < 0 || !Array.isArray(nv.volumes) || index >= nv.volumes.length) return;
+  const value = Math.max(0, Math.min(1, Number(opacity)));
+  try {
+    nv.setOpacity(index, value);
+  } catch {
+    try {
+      nv.volumes[index].opacity = value;
+    } catch {}
+  }
+  redrawViewer();
+}
+
 function setSliceTool(nextTool) {
   if (!Object.values(SLICE_TOOL).includes(nextTool)) return;
   currentSliceTool = nextTool;
@@ -440,6 +463,20 @@ function currentSubject() {
   return subjects[idx] || null;
 }
 
+function isOverlayTab(tabKey) {
+  return tabKey === "t1_overlay" || tabKey === "flair_overlay";
+}
+
+function baseTabForOverlay(tabKey) {
+  if (tabKey === "t1_overlay") return "t1";
+  if (tabKey === "flair_overlay") return "flair";
+  return null;
+}
+
+function currentOverlayDisplayState() {
+  return overlayDisplayStateByTab[currentTab] || { visible: true, transparency: 0 };
+}
+
 function firstAvailableTab(subject) {
   return TABS.find((tab) => subject?.available?.[tab.key])?.key || null;
 }
@@ -475,6 +512,7 @@ function showDicomCanvas() {
 }
 
 function showPdf(url) {
+  glEl.classList.remove("isReportView");
   removeAllVolumes();
   canvas.style.display = "none";
   toolOverlay.style.display = "none";
@@ -504,16 +542,10 @@ async function fetchJson(url) {
   return payload;
 }
 
-async function loadDicomSeries(subject, tabKey, token) {
+async function loadSeriesImage(subject, tabKey, token) {
   if (!nv) {
     throw new Error(viewerInitError?.message || "DICOM viewer unavailable because WebGL2 could not initialize.");
   }
-
-  showDicomCanvas();
-  hideEmpty();
-  removeAllVolumes();
-  setStatus(`Loading ${TAB_BY_KEY.get(tabKey).label}...`);
-  setTopStatus(`Subject ${subject.id} / ${TAB_BY_KEY.get(tabKey).label}`);
 
   const manifestUrl = `/api/subjects/${encodeURIComponent(subject.id)}/series/${encodeURIComponent(tabKey)}/manifest`;
   const manifestResponse = await fetch(manifestUrl);
@@ -552,7 +584,47 @@ async function loadDicomSeries(subject, tabKey, token) {
     name: converted[0].name || `${subject.id}-${tabKey}.nii`,
   });
   if (token !== loadToken) return;
+  return image;
+}
 
+function applyOverlayDisplaySettings() {
+  if (!isOverlayTab(currentTab)) return;
+  const state = currentOverlayDisplayState();
+  const opacity = state.visible ? 1 - state.transparency : 0;
+  setVolumeOpacity(1, opacity);
+}
+
+async function loadDicomSeries(subject, tabKey, token) {
+  if (!nv) {
+    throw new Error(viewerInitError?.message || "DICOM viewer unavailable because WebGL2 could not initialize.");
+  }
+
+  showDicomCanvas();
+  hideEmpty();
+  removeAllVolumes();
+  setStatus(`Loading ${TAB_BY_KEY.get(tabKey).label}...`);
+  setTopStatus(`Subject ${subject.id} / ${TAB_BY_KEY.get(tabKey).label}`);
+
+  glEl.classList.toggle("isReportView", tabKey === "pdf");
+
+  if (isOverlayTab(tabKey)) {
+    const baseKey = baseTabForOverlay(tabKey);
+    const baseImage = await loadSeriesImage(subject, baseKey, token);
+    if (token !== loadToken) return;
+    const overlayImage = await loadSeriesImage(subject, tabKey, token);
+    if (token !== loadToken) return;
+
+    removeAllVolumes();
+    nv.addVolume(baseImage);
+    nv.addVolume(overlayImage);
+    applyOverlayDisplaySettings();
+    redrawViewer();
+    setStatus(`Ready: ${TAB_BY_KEY.get(tabKey).label}.`);
+    return;
+  }
+
+  const image = await loadSeriesImage(subject, tabKey, token);
+  if (token !== loadToken) return;
   removeAllVolumes();
   nv.addVolume(image);
   redrawViewer();
@@ -582,6 +654,7 @@ async function loadCurrentSubject() {
   try {
     const tab = TAB_BY_KEY.get(currentTab);
     if (tab.type === "report") {
+      setCrosshairVisible(false);
       const reportUrl = `/api/subjects/${encodeURIComponent(subject.id)}/report`;
       const reportResponse = await fetch(reportUrl, { method: "GET" });
       if (reportResponse.ok) {
@@ -615,7 +688,18 @@ function renderSubjectShell(subject) {
   prevBtn.disabled = idx <= 0;
   nextBtn.disabled = idx >= subjects.length - 1;
   renderTabs(subject);
+  renderOverlayControls();
   loadReviewControls(subject.id);
+}
+
+function renderOverlayControls() {
+  const showControls = isOverlayTab(currentTab);
+  const state = currentOverlayDisplayState();
+  overlayControls.hidden = !showControls;
+  overlayControlsHr.hidden = !showControls;
+  overlayVisibleEl.checked = state.visible;
+  overlayTransparencyEl.value = String(state.transparency);
+  overlayTransparencyValue.textContent = state.transparency.toFixed(2);
 }
 
 function loadReviewControls(subjectId) {
@@ -777,6 +861,19 @@ notesEl.addEventListener("input", () => {
 caseStatusEl.addEventListener("change", saveCurrentReviewToMemory);
 flagForReviewEl.addEventListener("change", saveCurrentReviewToMemory);
 needsProcessingQcEl.addEventListener("change", saveCurrentReviewToMemory);
+
+overlayVisibleEl.addEventListener("change", () => {
+  const state = currentOverlayDisplayState();
+  state.visible = overlayVisibleEl.checked;
+  applyOverlayDisplaySettings();
+});
+
+overlayTransparencyEl.addEventListener("input", () => {
+  const state = currentOverlayDisplayState();
+  state.transparency = Number(overlayTransparencyEl.value);
+  overlayTransparencyValue.textContent = state.transparency.toFixed(2);
+  applyOverlayDisplaySettings();
+});
 
 clearBtn.addEventListener("click", () => {
   if (!currentId) return;
