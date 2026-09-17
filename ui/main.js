@@ -1,12 +1,11 @@
 import "./styles.css";
 import { Niivue, NVImage } from "@niivue/niivue";
-import { dicomLoader } from "@niivue/dicom-loader";
 
 const TABS = [
-  { key: "t1", label: "T1", type: "dicom" },
-  { key: "flair", label: "FLAIR", type: "dicom" },
-  { key: "t1_overlay", label: "T1 + Overlay", type: "dicom" },
-  { key: "flair_overlay", label: "FLAIR + Overlay", type: "dicom" },
+  { key: "t1", label: "T1", type: "volume" },
+  { key: "flair", label: "FLAIR", type: "volume" },
+  { key: "t1_overlay", label: "T1 + Overlay", type: "volume" },
+  { key: "flair_overlay", label: "FLAIR + Overlay", type: "volume" },
   { key: "pdf", label: "PDF", type: "report" },
 ];
 
@@ -324,7 +323,6 @@ async function createNiivueInstance() {
     show3Dcrosshair: crosshairVisible,
   });
   await viewer.attachToCanvas(canvas);
-  viewer.useDicomLoader({ loader: dicomLoader });
   return wrapPerPaneDraw2D(viewer);
 }
 
@@ -749,7 +747,7 @@ function renderTabs(subject) {
   }
 }
 
-function showDicomCanvas() {
+function showImageCanvas() {
   canvas.style.display = "block";
   toolOverlay.style.display = "block";
   pdfFrame.style.display = "none";
@@ -842,46 +840,26 @@ async function fetchJson(url) {
   return payload;
 }
 
-async function loadSeriesImage(subject, tabKey, token) {
+async function loadNiftiImage(subject, tabKey, token) {
   if (!nv) {
-    throw new Error(viewerInitError?.message || "DICOM viewer unavailable because WebGL2 could not initialize.");
+    throw new Error(viewerInitError?.message || "Image viewer unavailable because WebGL2 could not initialize.");
   }
 
-  const manifestUrl = `/api/subjects/${encodeURIComponent(subject.id)}/series/${encodeURIComponent(tabKey)}/manifest`;
-  const manifestResponse = await fetch(manifestUrl);
-  if (!manifestResponse.ok) throw new Error(`Manifest unavailable for ${TAB_BY_KEY.get(tabKey).label}.`);
-  const manifestText = await manifestResponse.text();
-  const fileUrls = manifestText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (!fileUrls.length) throw new Error(`No DICOM files listed for ${TAB_BY_KEY.get(tabKey).label}.`);
+  const volumeUrl = `/api/subjects/${encodeURIComponent(subject.id)}/series/${encodeURIComponent(tabKey)}/volume`;
+  const response = await fetch(volumeUrl);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `NIfTI file unavailable for ${TAB_BY_KEY.get(tabKey).label}.`);
+  }
+  const buffer = await response.arrayBuffer();
   if (token !== loadToken) return;
+  if (!buffer.byteLength) throw new Error(`NIfTI file is empty for ${TAB_BY_KEY.get(tabKey).label}.`);
 
-  const dicomData = [];
-  const manifestBase = new URL(manifestUrl, window.location.href);
-  for (const fileUrl of fileUrls) {
-    if (token !== loadToken) return;
-    const resolvedUrl = new URL(fileUrl, manifestBase);
-    const response = await fetch(resolvedUrl);
-    if (!response.ok) throw new Error(`DICOM file unavailable: ${response.statusText}`);
-    dicomData.push({
-      name: resolvedUrl.searchParams.get("name") || resolvedUrl.pathname.split("/").pop() || "dicom",
-      data: await response.arrayBuffer(),
-    });
-  }
-
-  if (token !== loadToken) return;
-  const converted = await dicomLoader(dicomData);
-  if (token !== loadToken) return;
-  if (!Array.isArray(converted) || converted.length === 0) {
-    throw new Error("DICOM conversion produced no volume.");
-  }
-  if (converted.length > 1) {
-    const names = converted.map((image) => image?.name || "unnamed volume").join(", ");
-    throw new Error(`DICOM conversion produced multiple volumes (${names}). A deterministic choice is not yet configured.`);
-  }
-
+  const bytes = new Uint8Array(buffer, 0, Math.min(2, buffer.byteLength));
+  const suffix = bytes[0] === 0x1f && bytes[1] === 0x8b ? ".nii.gz" : ".nii";
   const image = await NVImage.loadFromUrl({
-    url: converted[0].data,
-    name: converted[0].name || `${subject.id}-${tabKey}.nii`,
+    url: buffer,
+    name: `${subject.id}-${tabKey}${suffix}`,
   });
   if (token !== loadToken) return;
   return image;
@@ -895,12 +873,12 @@ function applyOverlayDisplaySettings() {
   setVolumeOpacity(1, overlayOpacity);
 }
 
-async function loadDicomSeries(subject, tabKey, token) {
+async function loadImagingView(subject, tabKey, token) {
   if (!nv) {
-    throw new Error(viewerInitError?.message || "DICOM viewer unavailable because WebGL2 could not initialize.");
+    throw new Error(viewerInitError?.message || "Image viewer unavailable because WebGL2 could not initialize.");
   }
 
-  showDicomCanvas();
+  showImageCanvas();
   hideEmpty();
   setLoadedDisplaySources([]);
   removeAllVolumes();
@@ -911,9 +889,9 @@ async function loadDicomSeries(subject, tabKey, token) {
 
   if (isOverlayTab(tabKey)) {
     const baseKey = baseTabForOverlay(tabKey);
-    const baseImage = await loadSeriesImage(subject, baseKey, token);
+    const baseImage = await loadNiftiImage(subject, baseKey, token);
     if (token !== loadToken) return;
-    const overlayImage = await loadSeriesImage(subject, tabKey, token);
+    const overlayImage = await loadNiftiImage(subject, tabKey, token);
     if (token !== loadToken) return;
 
     removeAllVolumes();
@@ -929,7 +907,7 @@ async function loadDicomSeries(subject, tabKey, token) {
     return;
   }
 
-  const image = await loadSeriesImage(subject, tabKey, token);
+  const image = await loadNiftiImage(subject, tabKey, token);
   if (token !== loadToken) return;
   removeAllVolumes();
   nv.addVolume(image);
@@ -978,7 +956,7 @@ async function loadCurrentSubject() {
       setTopStatus(`Subject ${subject.id} / PDF`);
       return;
     }
-    await loadDicomSeries(subject, currentTab, token);
+    await loadImagingView(subject, currentTab, token);
   } catch (error) {
     if (token !== loadToken) return;
     showEmpty(error?.message || "Unable to load this view.", true);
@@ -1264,6 +1242,6 @@ try {
   viewerInitError = error;
   canvas.style.display = "none";
   toolOverlay.style.display = "none";
-  setTopStatus("DICOM viewer unavailable.", true);
+  setTopStatus("Image viewer unavailable.", true);
 }
 await loadInitialData();

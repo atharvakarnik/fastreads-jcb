@@ -8,7 +8,6 @@
     "dev": "vite --host 127.0.0.1"
   },
   "dependencies": {
-    "@niivue/dicom-loader": "^1.0.0",
     "@niivue/niivue": "^0.68.2"
   },
   "devDependencies": {

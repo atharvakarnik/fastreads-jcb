@@ -1,55 +1,63 @@
-You are working with two repositories:
+# FastReads JCB maintenance guide
 
-1. `fastreads` — read-only reference
-2. `fastreads-jcb` — the new application and the only repository you may modify
+This repository is a functioning local NIfTI review viewer. Modify only this repository. The neighboring `fastreads` repository is a read-only historical reference and does not need to be inspected for routine work.
 
-You are currently in `fastreads-jcb` folder. The `fastreads` repository is stored laterally to this folder, under the same parent folder ("Codes and Repos").
+Keep the application small and local. It uses a Python standard-library server and a vanilla HTML, CSS, and JavaScript frontend built with Vite and NiiVue. Do not introduce a frontend framework or a configuration layer without a concrete need.
 
-Do not modify `fastreads`.
-
-Inspect `fastreads/server.py`, `fastreads/viewer.html`, and its launch scripts before editing. Reuse working subject traversal, slice navigation, zoom, reset zoom, crosshair, resizing, status messages, and review persistence where practical.
-
-Remove all PET-, MNI-, atlas-, VOI-, Centiloid-, and PET-filename-specific behavior.
-
-Implement a minimum viable local DICOM review viewer. Keep the code small and avoid configuration layers, frameworks, abstractions, and files that are not necessary.
-
-## Local data layout
-
-Medical data is stored locally inside the ignored directory:
+## Project layout
 
 ```text
 fastreads-jcb/
-└── data/
-    └── <subject_id>/
-        ├── t1/
-        ├── flair/
-        ├── t1_overlay/
-        ├── flair_overlay/
-        └── report.pdf
+├── data/                    # local medical data; ignored by Git
+├── ui/
+│   ├── index.html
+│   ├── main.js
+│   ├── styles.css
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── vite.config.js
+│   └── dist/                # generated frontend build
+├── server.py
+├── reviews.json             # generated locally; ignored by Git
+├── Start_Viewer.sh
+├── Start_Viewer.command
+└── Start_Viewer.bat
 ```
 
-Use a fixed data directory in `server.py`:
+Resolve data relative to `server.py`:
 
 ```python
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 ```
 
-Do not add:
+Do not add environment variables, `.env` files, command-line data-path configuration, or automatic data-folder creation. Keep `data/` and `reviews.json` ignored by Git.
 
-* environment variables
-* `.env`
-* `.env.example`
-* command-line configuration for the data path
-* automatic data-folder creation
+## Data contract
 
-The existing `data/` entry must remain in `.gitignore`.
+Each subject uses this layout:
 
-DICOM files may have any extension or no extension. Treat every regular file inside a series folder as a possible DICOM file.
+```text
+data/<subject_folder>/
+├── t1/
+├── flair/
+├── t1_overlay/
+├── flair_overlay/
+├── pdf/                     # optional DICOM report pages
+└── report.pdf               # optional alternative to pdf/
+```
+
+Each imaging folder may contain exactly one `.nii` or `.nii.gz` file. Ignore unrelated files, including legacy DICOM and JSON sidecars. A folder with no NIfTI file makes its view unavailable. Multiple NIfTI files are ambiguous and must produce a useful error rather than selecting one silently.
+
+The T1 + Overlay and FLAIR + Overlay views each load two NIfTI volumes: the corresponding base image and its overlay. An overlay view is available only when both files exist. Preserve the overlay visibility and opacity controls. Do not mutate RGB voxel bytes to create transparency; NiiVue volume opacity handles display blending.
+
+Subject IDs are derived from the first six filename characters when they are six digits. If no imaging NIfTI filename begins with six digits, use the subject folder name. This convention is provisional until representative production filenames are available.
+
+PDF reports may be supplied as `report.pdf` or as DICOM image pages inside `pdf/`. The DICOM parsing code in `server.py` is only for rendering those report pages as PNG. Do not route imaging modalities through the DICOM report parser.
 
 ## Application behavior
 
-Each subject may have five selectable views:
+The selectable views are:
 
 1. T1
 2. FLAIR
@@ -57,308 +65,65 @@ Each subject may have five selectable views:
 4. FLAIR + Overlay
 5. PDF
 
-The two overlay views are already-created RGB DICOM series. Treat them as independent DICOM series. Do not implement runtime overlay composition.
+Display only the selected view. Missing resources disable only their corresponding tabs. Remember the selected tab while moving between subjects when it remains available; otherwise select the first available tab. Prevent stale asynchronous loads from replacing a newer subject or tab.
 
-Display only the selected view.
+The viewer retains slice navigation, per-pane zoom and reset, crosshair visibility, responsive resizing, overlay visibility and opacity, image window/level controls, and continuous report-page scrolling with PDF zoom controls.
 
-Missing resources must disable only their corresponding tabs. The subject should remain available.
+## Backend API
 
-## Frontend approach
-
-Use vanilla HTML, CSS, and JavaScript.
-
-Use:
-
-* `@niivue/niivue`
-* `@niivue/dicom-loader`
-
-A small Vite setup is acceptable because the DICOM loader uses npm, WebAssembly, and a Web Worker. Do not introduce React, Vue, Angular, TypeScript, or another framework.
-
-Keep the number of files minimal. A suitable structure is:
+`server.py` binds only to `127.0.0.1` and serves `ui/dist/`.
 
 ```text
-fastreads-jcb/
-├── data/
-├── index.html
-├── main.js
-├── styles.css
-├── server.py
-├── package.json
-├── package-lock.json
-├── vite.config.js
-├── Start_Viewer.sh
-├── Start_Viewer.bat
-├── .gitignore
-├── LICENSE
-└── README.md
-```
-
-Do not create a separate form-schema file unless it clearly reduces code rather than adding structure.
-
-Remove the copied `viewer.html` once its useful code has been transferred into the new frontend.
-
-## Backend
-
-Implement:
-
-```text
-GET /api/subjects
-```
-
-Return naturally sorted subject IDs and availability:
-
-```json
-{
-  "subjects": [
-    {
-      "id": "TEST001",
-      "available": {
-        "t1": true,
-        "flair": true,
-        "t1_overlay": true,
-        "flair_overlay": true,
-        "pdf": true
-      }
-    }
-  ]
-}
-```
-
-Implement a DICOM-series manifest endpoint:
-
-```text
-GET /api/subjects/<subject_id>/series/<series_key>/manifest
-```
-
-Allowed series keys:
-
-```text
-t1
-flair
-t1_overlay
-flair_overlay
-```
-
-The manifest must use the format required by `@niivue/dicom-loader` and list files in deterministic order.
-
-Implement a safe endpoint for serving individual DICOM files.
-
-Implement:
-
-```text
-GET /api/subjects/<subject_id>/report
-```
-
-Serve `report.pdf` with:
-
-```text
-Content-Type: application/pdf
-```
-
-Prevent directory traversal. Do not accept arbitrary filesystem paths. Validate subject IDs and series keys against discovered local data.
-
-Implement:
-
-```text
-GET /api/reviews
+GET  /api/subjects
+GET  /api/subjects/<subject_id>/series/<series_key>/volume
+GET  /api/subjects/<subject_id>/report
+GET  /api/subjects/<subject_id>/report-pages
+GET  /api/subjects/<subject_id>/report-pages/<index>.png
+GET  /api/reviews
 POST /api/reviews
 ```
 
-Store review data in:
+Allowed imaging series keys are `t1`, `flair`, `t1_overlay`, and `flair_overlay`. The volume endpoint serves the single NIfTI file from the selected folder. Validate subjects and series keys against discovered local data, prevent directory traversal, and never accept arbitrary filesystem paths.
 
-```text
-fastreads-jcb/reviews.json
-```
+Store review data in root-level `reviews.json`. Write changes atomically with a temporary file followed by replacement, and reject unknown subject IDs.
 
-`reviews.json` is already ignored by Git.
+## Frontend
 
-Write review changes atomically using a temporary file followed by replacement. Reject unknown subject IDs.
+Use `@niivue/niivue` to load NIfTI volumes. Do not add `@niivue/dicom-loader`; the browser should make one volume request per loaded modality. Overlay tabs intentionally make two volume requests, one for the base and one for the overlay.
 
-Bind only to:
+Keep the current left sidebar, subject navigation, status messages, tab layout, toolbar, review controls, and local preservation of review edits. Do not expose identifying metadata or filenames in the interface or logs.
 
-```text
-127.0.0.1
-```
-
-Serve the built frontend from `dist/`.
-
-## Interface
-
-Preserve the useful layout of `fastreads`:
-
-* left sidebar
-* main viewer area
-* subject ID
-* subject index and count
-* Previous
-* Next
-* Go to subject ID
-* Go to index
-* status and error messages
-* top viewer toolbar
-
-Add five tab buttons:
-
-* T1
-* FLAIR
-* T1 + Overlay
-* FLAIR + Overlay
-* PDF
-
-Remember the selected tab while moving between subjects when that resource exists. Otherwise, select the first available tab.
-
-## DICOM viewer
-
-Create one NiiVue instance and register the DICOM loader.
-
-When loading a series:
-
-1. Clear the previous volume.
-2. Fetch the manifest.
-3. Load the DICOM series.
-4. Show a loading message.
-5. Prevent stale asynchronous loads from replacing a newer subject or tab.
-6. Show a useful error if loading or conversion fails.
-7. Release previous volume resources where practical.
-
-Do not cache decoded volumes for every subject.
-
-If conversion produces no volume, show an error.
-
-If conversion produces multiple candidate volumes, do not use a browser prompt. Show a diagnostic error unless there is a clearly safe deterministic choice.
-
-Do not display or log identifying DICOM metadata.
-
-Actual RGB compatibility must be tested with the supplied de-identified data. Do not claim that RGB works merely because grayscale T1 or FLAIR works.
-
-## PDF view
-
-When PDF is selected:
-
-* hide the NiiVue canvas
-* show a full-size iframe or object
-* load the subject’s PDF endpoint
-* restore the canvas when returning to a DICOM tab
-
-## Viewer controls
-
-Retain or adapt:
-
-* slice navigation
-* zoom
-* reset zoom
-* crosshair visibility
-* responsive resizing
-
-Add one brightness control using NiiVue gamma:
-
-```text
-Brightness slider: 0.5–2.0
-Default: 1.0
-Reset button: 1.0
-```
-
-Do not implement overlay opacity yet.
-
-## Dummy review form
-
-Add these temporary fields directly in the sidebar:
-
-Assessment:
-
-* Unset
-* Option A
-* Option B
-* Uncertain
-
-Image quality:
-
-* Unset
-* Acceptable
-* Limited
-* Non-diagnostic
-
-Needs follow-up:
-
-* checkbox
-
-Notes:
-
-* multiline text
-
-Include:
-
-* Save button
-* saved/unsaved indicator
-* independent state per subject
-* loading from `/api/reviews`
-* saving through `POST /api/reviews`
-* preservation of unsaved edits while changing tabs or subjects
-
-These are dummy fields and must not be presented as clinically meaningful.
-
-## Privacy and repository safety
+## Privacy and safety
 
 Do not:
 
-* remove `data/` from `.gitignore`
-* commit medical files
-* create sample DICOM files
-* create sample PDFs
-* display patient metadata
-* add analytics or telemetry
-* upload data anywhere
-* make external API calls
-* expose arbitrary filesystem access
-* claim clinical or diagnostic validation
+- commit medical files, generated reviews, or sample reports
+- remove `data/` or `reviews.json` from `.gitignore`
+- display or log identifying image metadata
+- add analytics, telemetry, uploads, or external API calls
+- expose arbitrary filesystem access
+- claim clinical or diagnostic validation
+- use `git add -f` for ignored medical data
 
-Do not use `git add -f`.
+## Launch and checks
 
-## Launch workflow
+The platform launchers build the frontend and start `server.py`. On macOS, `Start_Viewer.command` delegates to `Start_Viewer.sh`; Windows uses `Start_Viewer.bat`.
 
-Support:
+For direct use:
 
 ```bash
-npm install
-npm run build
-python server.py
+npm --prefix ui install
+npm --prefix ui run build
+python3 server.py
 ```
 
-Also provide a simple development command using Vite and a proxy to the Python server.
-
-Do not automatically run `npm install` from the launch scripts.
-
-## Required checks
-
-Run:
+Before completing code changes, run:
 
 ```bash
-python -m py_compile server.py
-npm run build
+python3 -m py_compile server.py
+npm --prefix ui run build
+git diff --check
 git ls-files data
 ```
 
-`git ls-files data` must produce no output.
-
-Verify:
-
-* `data/` is resolved relative to `server.py`
-* missing `data/` produces a clear error
-* subject discovery works
-* missing resources disable only their tabs
-* invalid subjects and path traversal are rejected
-* PDF uses `application/pdf`
-* reviews save and reload
-* rapid subject or tab changes cannot display stale data
-* no PET, MNI, atlas, VOI, or Centiloid labels remain
-
-Do not invent fake DICOM data for tests.
-
-At completion, report:
-
-1. files created, removed, and changed
-2. build and syntax-check results
-3. commands to run the viewer
-4. assumptions made
-5. manual tests required for the real RGB series
-6. any non-identifying RGB/YBR loading error
+Also verify subject discovery, missing-tab behavior, NIfTI response content and size, invalid subject/series rejection, PDF rendering, review persistence, stale-load protection, and RGB overlay rendering with de-identified sample data when available.

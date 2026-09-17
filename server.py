@@ -15,8 +15,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 DIST_DIR = os.path.join(BASE_DIR, "ui", "dist")
 REVIEWS_PATH = os.path.join(BASE_DIR, "reviews.json")
-ALLOWED_SERIES = ("t1", "flair", "t1_overlay", "flair_overlay")
-DICOM_SERIES = ALLOWED_SERIES + ("pdf",)
+IMAGING_SERIES = ("t1", "flair", "t1_overlay", "flair_overlay")
 SUBJECT_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
@@ -50,10 +49,19 @@ def list_regular_files(folder):
     return sorted(files, key=natural_key)
 
 
+def is_nifti_filename(filename):
+    lower = filename.casefold()
+    return lower.endswith(".nii") or lower.endswith(".nii.gz")
+
+
+def list_nifti_files(folder):
+    return [filename for filename in list_regular_files(folder) if is_nifti_filename(filename)]
+
+
 def derive_subject_id(entry):
     filename_ids = []
-    for series_key in DICOM_SERIES:
-        for filename in list_regular_files(os.path.join(entry.path, series_key)):
+    for series_key in IMAGING_SERIES:
+        for filename in list_nifti_files(os.path.join(entry.path, series_key)):
             file_id = initial_six_digit_id(filename)
             if file_id:
                 filename_ids.append(file_id)
@@ -73,9 +81,15 @@ def discover_subject_records():
         if not is_safe_subject_id(subject_id):
             continue
 
+        nifti_available = {
+            key: bool(list_nifti_files(os.path.join(entry.path, key)))
+            for key in IMAGING_SERIES
+        }
         available = {
-            key: bool(list_regular_files(os.path.join(entry.path, key)))
-            for key in ALLOWED_SERIES
+            "t1": nifti_available["t1"],
+            "flair": nifti_available["flair"],
+            "t1_overlay": nifti_available["t1"] and nifti_available["t1_overlay"],
+            "flair_overlay": nifti_available["flair"] and nifti_available["flair_overlay"],
         }
         available["pdf"] = (
             os.path.isfile(os.path.join(entry.path, "report.pdf"))
@@ -106,12 +120,19 @@ def get_subject(subject_id):
     return subject_index().get(subject_id)
 
 
-def get_series_files(subject_id, series_key):
+def get_nifti_files(subject_id, series_key):
     subject = get_subject(subject_id)
-    if series_key not in DICOM_SERIES or not subject:
+    if series_key not in IMAGING_SERIES or not subject:
         return None
     folder = os.path.join(subject_dir(subject), series_key)
-    return list_regular_files(folder)
+    return list_nifti_files(folder)
+
+
+def get_report_page_files(subject_id):
+    subject = get_subject(subject_id)
+    if not subject:
+        return None
+    return list_regular_files(os.path.join(subject_dir(subject), "pdf"))
 
 
 def read_dicom_value(data, pos, explicit_vr, little_endian=True):
@@ -299,7 +320,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def log_message(self, format, *args):
-        if self.path.startswith("/api/subjects/") and "/files/" in self.path:
+        if self.path.startswith("/api/subjects/") and "/volume" in self.path:
             return
         super().log_message(format, *args)
 
@@ -334,14 +355,8 @@ class Handler(SimpleHTTPRequestHandler):
             }
             return self.send_json({"reviews": reviews})
 
-        if len(parts) == 5 and parts[:2] == ["api", "subjects"] and parts[3] == "series" and parts[4] == "manifest":
-            return self.send_error(404, "Missing series key")
-
-        if len(parts) == 6 and parts[:2] == ["api", "subjects"] and parts[3] == "series" and parts[5] == "manifest":
-            return self.send_manifest(parts[2], parts[4])
-
-        if len(parts) == 7 and parts[:2] == ["api", "subjects"] and parts[3] == "series" and parts[5] == "files":
-            return self.send_series_file(parts[2], parts[4], parts[6])
+        if len(parts) == 6 and parts[:2] == ["api", "subjects"] and parts[3] == "series" and parts[5] == "volume":
+            return self.send_nifti_volume(parts[2], parts[4])
 
         if len(parts) == 4 and parts[:2] == ["api", "subjects"] and parts[3] == "report":
             return self.send_report(parts[2])
@@ -387,41 +402,27 @@ class Handler(SimpleHTTPRequestHandler):
 
         return self.send_json({"ok": True, "count": len(cleaned)})
 
-    def send_manifest(self, subject_id, series_key):
-        files = get_series_files(subject_id, series_key)
+    def send_nifti_volume(self, subject_id, series_key):
+        files = get_nifti_files(subject_id, series_key)
         if files is None:
             return self.send_error(404, "Unknown subject or series")
         if not files:
-            return self.send_error(404, "No DICOM files for this series")
-
-        lines = []
-        for index, filename in enumerate(files):
-            url = (
-                f"/api/subjects/{quote(subject_id, safe='')}/series/"
-                f"{quote(series_key, safe='')}/files/{index}?name={quote(filename)}"
+            return self.send_json({"error": "No NIfTI file found for this modality."}, status=404)
+        if len(files) > 1:
+            return self.send_json(
+                {"error": "Multiple NIfTI files found for this modality; keep exactly one .nii or .nii.gz file."},
+                status=409,
             )
-            lines.append(url)
-        return self.send_text("\n".join(lines) + "\n")
 
-    def send_series_file(self, subject_id, series_key, index_text):
-        files = get_series_files(subject_id, series_key)
-        if files is None:
-            return self.send_error(404, "Unknown subject or series")
-        try:
-            index = int(index_text)
-        except ValueError:
-            return self.send_error(404, "Unknown file")
-        if index < 0 or index >= len(files):
-            return self.send_error(404, "Unknown file")
-
-        filename = files[index]
+        filename = files[0]
         subject = get_subject(subject_id)
         path = os.path.realpath(os.path.join(subject_dir(subject), series_key, filename))
         root = os.path.realpath(os.path.join(subject_dir(subject), series_key))
         if os.path.commonpath([root, path]) != root or not os.path.isfile(path):
-            return self.send_error(404, "Unknown file")
+            return self.send_error(404, "Unknown volume")
 
-        return self.send_file(path, "application/dicom")
+        content_type = "application/gzip" if filename.casefold().endswith(".gz") else "application/octet-stream"
+        return self.send_file(path, content_type)
 
     def send_report(self, subject_id):
         subject = get_subject(subject_id)
@@ -434,7 +435,7 @@ class Handler(SimpleHTTPRequestHandler):
         return self.send_file(path, "application/pdf")
 
     def send_report_pages(self, subject_id):
-        files = get_series_files(subject_id, "pdf")
+        files = get_report_page_files(subject_id)
         if files is None:
             return self.send_error(404, "Unknown subject")
         if not files:
@@ -454,7 +455,7 @@ class Handler(SimpleHTTPRequestHandler):
         match = re.fullmatch(r"(\d+)\.png", page_name)
         if not match:
             return self.send_error(404, "Unknown report page")
-        files = get_series_files(subject_id, "pdf")
+        files = get_report_page_files(subject_id)
         if files is None:
             return self.send_error(404, "Unknown subject")
         index = int(match.group(1))
