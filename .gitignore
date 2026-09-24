@@ -12,6 +12,7 @@ node_modules/
 dist/
 ui/node_modules/
 ui/dist/
+shipment/
 
 # Python
 __pycache__/

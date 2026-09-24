@@ -17,6 +17,33 @@ DIST_DIR = os.path.join(BASE_DIR, "ui", "dist")
 REVIEWS_PATH = os.path.join(BASE_DIR, "reviews.json")
 IMAGING_SERIES = ("t1", "flair", "t1_overlay", "flair_overlay")
 SUBJECT_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+DATA_LAYOUT_EXAMPLE = """\
+data/
+|-- <ID-1>/
+|   |-- t1/
+|   |   `-- t1.nii.gz
+|   |-- flair/
+|   |   `-- flair.nii.gz
+|   |-- t1_overlay/
+|   |   `-- t1_overlay.nii.gz
+|   |-- flair_overlay/
+|   |   `-- flair_overlay.nii.gz
+|   |-- pdf/
+|   |   `-- report-page.dcm
+|   `-- report.pdf
+`-- <ID-2>/
+    |-- t1/
+    |   `-- t1.nii
+    |-- flair/
+    |   `-- flair.nii
+    |-- t1_overlay/
+    |   `-- t1_overlay.nii
+    |-- flair_overlay/
+    |   `-- flair_overlay.nii
+    |-- pdf/
+    |   `-- report-page.dcm
+    `-- report.pdf
+"""
 
 
 def natural_key(value):
@@ -100,6 +127,20 @@ def discover_subject_records():
 
     subjects.sort(key=lambda subject: natural_key(subject["id"]))
     return subjects
+
+
+def warn_if_data_unavailable():
+    records = discover_subject_records()
+    if os.path.isdir(DATA_DIR) and any(any(record["available"].values()) for record in records):
+        return
+
+    print("", flush=True)
+    print("WARNING: No viewable subject data was found.", flush=True)
+    print(f"Place the data directory beside server.py at: {DATA_DIR}", flush=True)
+    print("Each imaging folder may contain exactly one .nii or .nii.gz file.", flush=True)
+    print("Modality and report resources may be omitted when unavailable.", flush=True)
+    print("Expected directory structure:", flush=True)
+    print(DATA_LAYOUT_EXAMPLE, flush=True)
 
 
 def public_subject(record):
@@ -511,7 +552,7 @@ class Handler(SimpleHTTPRequestHandler):
             path = os.path.join(DIST_DIR, "index.html")
             if not os.path.isfile(path):
                 return self.send_text(
-                    "Frontend build not found. Run `npm --prefix ui install` and `npm --prefix ui run build` first.\n",
+                    "Prebuilt frontend files are missing. Download a complete FastReads JCB shipment.\n",
                     status=503,
                 )
 
@@ -520,6 +561,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    warn_if_data_unavailable()
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"Serving on http://127.0.0.1:{PORT}/")
     httpd.serve_forever()

@@ -20,18 +20,11 @@ if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) els
   exit 1
 fi
 
-if ! command -v npm >/dev/null 2>&1; then
-  echo "Node.js and npm are required to build the viewer frontend."
+if [ ! -f ui/dist/index.html ]; then
+  echo "The prebuilt viewer files are missing from ui/dist/."
+  echo "Download a complete FastReads JCB shipment and try again."
   exit 1
 fi
-
-if [ ! -d ui/node_modules ]; then
-  echo "Installing frontend dependencies..."
-  npm --prefix ui install
-fi
-
-echo "Building frontend..."
-npm --prefix ui run build
 
 viewer_is_ready() {
   "$PY" - "$URL" <<'PY'

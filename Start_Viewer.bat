@@ -28,25 +28,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
-where npm >nul 2>&1
-if errorlevel 1 (
-  echo Node.js and npm are required to build the viewer frontend.
-  pause
-  exit /b 1
-)
-
-if not exist ui\node_modules (
-  echo Installing frontend dependencies...
-  call npm --prefix ui install
-  if errorlevel 1 (
-    pause
-    exit /b 1
-  )
-)
-
-echo Building frontend...
-call npm --prefix ui run build
-if errorlevel 1 (
+if not exist ui\dist\index.html (
+  echo The prebuilt viewer files are missing from ui\dist\.
+  echo Download a complete FastReads JCB shipment and try again.
   pause
   exit /b 1
 )

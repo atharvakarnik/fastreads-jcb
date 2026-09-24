@@ -19,9 +19,12 @@ fastreads-jcb/
 │   └── dist/                # generated frontend build
 ├── server.py
 ├── reviews.json             # generated locally; ignored by Git
+├── prepare_shipment.py      # maintainer-only release builder
+├── INSTALLATIONS.md
 ├── Start_Viewer.sh
 ├── Start_Viewer.command
-└── Start_Viewer.bat
+├── Start_Viewer.bat
+└── shipment/                # generated release files; ignored by Git
 ```
 
 Resolve data relative to `server.py`:
@@ -31,7 +34,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 ```
 
-Do not add environment variables, `.env` files, command-line data-path configuration, or automatic data-folder creation. Keep `data/` and `reviews.json` ignored by Git.
+Do not add environment variables, `.env` files, command-line data-path configuration, or automatic data-folder creation. Keep `data/`, `reviews.json`, and `shipment/` ignored by Git.
 
 ## Data contract
 
@@ -105,17 +108,27 @@ Do not:
 - claim clinical or diagnostic validation
 - use `git add -f` for ignored medical data
 
-## Launch and checks
+## Launch, shipment, and checks
 
-The platform launchers build the frontend and start `server.py`. On macOS, `Start_Viewer.command` delegates to `Start_Viewer.sh`; Windows uses `Start_Viewer.bat`.
+The platform launchers use the prebuilt frontend in `ui/dist/` and start `server.py`. They must not require Node.js, npm, dependency installation, or a frontend build. On macOS, `Start_Viewer.command` delegates to `Start_Viewer.sh`; Windows uses `Start_Viewer.bat`.
 
-For direct use:
+For development builds:
 
 ```bash
 npm --prefix ui install
 npm --prefix ui run build
 python3 server.py
 ```
+
+Create user-facing releases only through:
+
+```bash
+python3 prepare_shipment.py
+```
+
+The shipment command requires a clean Git working tree, installs the exact locked frontend dependencies, builds `ui/dist/` fresh, and atomically replaces `shipment/fastreads-jcb.zip`. It writes release metadata to `shipment/BUILD_INFO.txt`. The ZIP contains only the backend, platform launchers, installation instructions, and prebuilt frontend. It must not contain source-only files, Node.js dependencies, Git metadata, review files, or medical data.
+
+`--allow-dirty` is only for development testing of the packaging process. Do not distribute a dirty shipment.
 
 Before completing code changes, run:
 
