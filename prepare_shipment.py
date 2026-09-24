@@ -14,6 +14,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 UI_DIR = BASE_DIR / "ui"
 DIST_DIR = UI_DIR / "dist"
+DATA_DIR = BASE_DIR / "data"
 SHIPMENT_DIR = BASE_DIR / "shipment"
 ZIP_PATH = SHIPMENT_DIR / "fastreads-jcb.zip"
 BUILD_INFO_PATH = SHIPMENT_DIR / "BUILD_INFO.txt"
@@ -72,7 +73,17 @@ def validate_dist():
         raise RuntimeError("Frontend build contains unsupported symbolic links.")
 
 
-def copy_runtime_tree(destination):
+def validate_data():
+    if not DATA_DIR.is_dir():
+        raise RuntimeError("--include-data requires a data/ directory beside prepare_shipment.py.")
+    symlinks = [path for path in DATA_DIR.rglob("*") if path.is_symlink()]
+    if symlinks:
+        raise RuntimeError("The data/ directory contains unsupported symbolic links.")
+    if not any(path.is_file() for path in DATA_DIR.rglob("*")):
+        raise RuntimeError("--include-data requires at least one file inside data/.")
+
+
+def copy_runtime_tree(destination, include_data=False):
     app_dir = destination / "fastreads-jcb"
     app_dir.mkdir()
     for name in RUNTIME_FILES:
@@ -80,6 +91,8 @@ def copy_runtime_tree(destination):
         destination_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(BASE_DIR / name, destination_path)
     shutil.copytree(DIST_DIR, app_dir / "ui" / "dist")
+    if include_data:
+        shutil.copytree(DATA_DIR, app_dir / "data")
     return app_dir
 
 
@@ -95,7 +108,7 @@ def write_zip(staging_dir, target):
                 archive.write(path, relative.as_posix())
 
 
-def verify_zip(path):
+def verify_zip(path, include_data=False):
     forbidden = {
         "prepare_shipment.py",
         "package.json",
@@ -116,7 +129,13 @@ def verify_zip(path):
             "fastreads-jcb/ui/dist/index.html",
         }
         missing = required - names
-        unexpected = [name for name in names if Path(name).name in forbidden or "/data/" in name]
+        data_entries = [name for name in names if name.startswith("fastreads-jcb/data/")]
+        data_files = [name for name in data_entries if not name.endswith("/")]
+        unexpected = [name for name in names if Path(name).name in forbidden]
+        if include_data and not data_files:
+            missing.add("fastreads-jcb/data/<files>")
+        if not include_data:
+            unexpected.extend(data_entries)
         if missing:
             raise RuntimeError("Shipment ZIP is missing: " + ", ".join(sorted(missing)))
         if unexpected:
@@ -136,12 +155,20 @@ def main():
         action="store_true",
         help="Allow packaging uncommitted source changes for development testing.",
     )
+    parser.add_argument(
+        "--include-data",
+        action="store_true",
+        help="Include the local data/ directory in the shipment ZIP.",
+    )
     args = parser.parse_args()
 
     if sys.version_info < (3, 10):
         raise RuntimeError("Python 3.10 or newer is required to prepare a shipment.")
 
     validate_source_tree()
+    if args.include_data:
+        validate_data()
+        print("WARNING: The shipment will contain local subject data.", flush=True)
     git = require_command("git")
     npm = require_command("npm")
     commit = git_output(git, "rev-parse", "HEAD")
@@ -174,9 +201,9 @@ def main():
     try:
         with tempfile.TemporaryDirectory(prefix="fastreads-jcb-shipment-") as temp_dir:
             staging_dir = Path(temp_dir)
-            copy_runtime_tree(staging_dir)
+            copy_runtime_tree(staging_dir, include_data=args.include_data)
             write_zip(staging_dir, temp_zip)
-        verify_zip(temp_zip)
+        verify_zip(temp_zip, include_data=args.include_data)
         checksum = hashlib.sha256(temp_zip.read_bytes()).hexdigest()
         os.replace(temp_zip, ZIP_PATH)
     finally:
@@ -191,14 +218,17 @@ def main():
         f"Built at (UTC): {built_at}\n"
         f"Archive: {ZIP_PATH.name}\n"
         f"SHA-256: {checksum}\n"
-        f"Data included: no\n"
+        f"Data included: {'yes' if args.include_data else 'no'}\n"
     )
     atomic_write_text(BUILD_INFO_PATH, build_info)
 
     print("")
     print(f"Shipment ready: {ZIP_PATH}")
     print(f"Build information: {BUILD_INFO_PATH}")
-    print("Subject data is not included and must be supplied separately.")
+    if args.include_data:
+        print("Subject data is included. Handle the ZIP as sensitive medical data.")
+    else:
+        print("Subject data is not included and must be supplied separately.")
 
 
 if __name__ == "__main__":

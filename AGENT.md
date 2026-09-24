@@ -129,7 +129,9 @@ Create user-facing releases only through:
 python3 prepare_shipment.py
 ```
 
-The shipment command requires a clean Git working tree, installs the exact locked frontend dependencies, builds `ui/dist/` fresh, and atomically replaces `shipment/fastreads-jcb.zip`. It writes release metadata to `shipment/BUILD_INFO.txt`. The ZIP contains only the backend, platform launchers, `PreCheck-Installs/`, and the prebuilt frontend. The checkers overwrite an ignored `PreCheck-Installs/install_this.txt` report and must work without Python. The ZIP must not contain source-only files, Node.js dependencies, Git metadata, generated checker reports, review files, or medical data.
+The shipment command requires a clean Git working tree, installs the exact locked frontend dependencies, builds `ui/dist/` fresh, and atomically replaces `shipment/fastreads-jcb.zip`. It writes release metadata to `shipment/BUILD_INFO.txt`. By default, the ZIP contains only the backend, platform launchers, `PreCheck-Installs/`, and the prebuilt frontend. The checkers overwrite an ignored `PreCheck-Installs/install_this.txt` report and must work without Python. The ZIP must not contain source-only files, Node.js dependencies, Git metadata, generated checker reports, or review files.
+
+Use `python3 prepare_shipment.py --include-data` only when the intended shipment must contain the ignored local `data/` tree. This opt-in requires a nonempty `data/`, rejects symbolic links, records `Data included: yes` in `BUILD_INFO.txt`, and makes the resulting ZIP sensitive medical data. The default command must continue to exclude data.
 
 `--allow-dirty` is only for development testing of the packaging process. Do not distribute a dirty shipment.
 

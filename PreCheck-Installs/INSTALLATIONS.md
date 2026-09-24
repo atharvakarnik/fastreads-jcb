@@ -26,7 +26,7 @@ Raise a ticket to IT (_or DIY_) to install Python for all users (in your PC/Lapt
 ## Set up the viewer
 
 1. Extract `fastreads-jcb.zip` into an approved, writable location. Do not run it directly from inside the ZIP file.
-2. Place the separately supplied `data` folder inside the extracted `fastreads-jcb` folder, beside `server.py`.
+2. Check whether the extracted `fastreads-jcb` folder already contains `data`. If not, place the separately supplied `data` folder there beside `server.py`.
 3. Keep the folder in a location approved for the supplied medical data. The viewer writes `reviews.json` into this folder when reviews are saved.
 
 The resulting layout should begin like this:
