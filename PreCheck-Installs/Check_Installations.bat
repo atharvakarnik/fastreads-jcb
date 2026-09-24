@@ -16,7 +16,7 @@ if not errorlevel 1 (
         set "PYTHON_OK=1"
         for /f "delims=" %%V in ('py -3 --version 2^>^&1') do set "PYTHON_DETAILS=%%V (py -3)"
     ) else (
-        for /f "delims=" %%V in ('py -3 --version 2^>^&1') do set "PYTHON_DETAILS=%%V (Python 3.10 or newer is required)"
+        for /f "delims=" %%V in ('py -3 --version 2^>^&1') do set "PYTHON_DETAILS=%%V (py -3)"
     )
 )
 
@@ -28,7 +28,7 @@ if "%PYTHON_OK%"=="0" (
             set "PYTHON_OK=1"
             for /f "delims=" %%V in ('python --version 2^>^&1') do set "PYTHON_DETAILS=%%V (python)"
         ) else (
-            for /f "delims=" %%V in ('python --version 2^>^&1') do set "PYTHON_DETAILS=%%V (Python 3.10 or newer is required)"
+            for /f "delims=" %%V in ('python --version 2^>^&1') do set "PYTHON_DETAILS=%%V (python)"
         )
     )
 )
@@ -86,45 +86,46 @@ if "%PYTHON_OK%"=="0" set "NEEDS_ACTION=1"
 if "%BROWSER_OK%"=="0" set "NEEDS_ACTION=1"
 if "%PACKAGE_OK%"=="0" set "NEEDS_ACTION=1"
 
->"%OUTPUT_FILE%" echo FastReads-JCB installation check
->>"%OUTPUT_FILE%" echo Generated: %DATE% %TIME%
->>"%OUTPUT_FILE%" echo Platform: Windows
+>"%OUTPUT_FILE%" echo FASTREADS-JCB PRECHECK
 >>"%OUTPUT_FILE%" echo.
 
 if "%NEEDS_ACTION%"=="0" goto write_ready
 
->>"%OUTPUT_FILE%" echo RESULT: Action is required before the viewer can run.
+>>"%OUTPUT_FILE%" echo ACTION NEEDED
 >>"%OUTPUT_FILE%" echo.
 if "%PYTHON_OK%"=="0" goto write_install_header
 if "%BROWSER_OK%"=="0" goto write_install_header
+>>"%OUTPUT_FILE%" echo No software installation is needed.
+>>"%OUTPUT_FILE%" echo.
 goto write_package_issue
 
 :write_install_header
->>"%OUTPUT_FILE%" echo Install or update through IT:
-if "%PYTHON_OK%"=="0" >>"%OUTPUT_FILE%" echo - Python 3.10 or newer, including the py/python command on PATH.
-if "%PYTHON_OK%"=="0" >>"%OUTPUT_FILE%" echo   Current result: %PYTHON_DETAILS%
-if "%BROWSER_OK%"=="0" >>"%OUTPUT_FILE%" echo - A current version of Chrome, Edge, or Firefox with WebGL2 support.
+>>"%OUTPUT_FILE%" echo IT: Install or update:
+if "%PYTHON_OK%"=="0" >>"%OUTPUT_FILE%" echo - Python 3.10+; make py or python available on PATH.
+if "%PYTHON_OK%"=="0" >>"%OUTPUT_FILE%" echo   Found: %PYTHON_DETAILS%
+if "%BROWSER_OK%"=="0" >>"%OUTPUT_FILE%" echo - Current Chrome, Edge, or Firefox with WebGL2.
+>>"%OUTPUT_FILE%" echo Node.js/npm: not required.
 >>"%OUTPUT_FILE%" echo.
 
 :write_package_issue
 if "%PACKAGE_OK%"=="1" goto write_footer
->>"%OUTPUT_FILE%" echo Viewer package issue:
->>"%OUTPUT_FILE%" echo - ui\dist\index.html is missing. Obtain a complete FastReads-JCB shipment.
+>>"%OUTPUT_FILE%" echo VIEWER PACKAGE ISSUE:
+>>"%OUTPUT_FILE%" echo - Missing ui\dist\index.html. Replace this with a complete shipment.
 >>"%OUTPUT_FILE%" echo.
 goto write_footer
 
 :write_ready
->>"%OUTPUT_FILE%" echo RESULT: No additional software installation is required.
+>>"%OUTPUT_FILE%" echo READY - no software installation is needed.
+>>"%OUTPUT_FILE%" echo Found: %PYTHON_DETAILS%; %BROWSER_DETAILS%
+>>"%OUTPUT_FILE%" echo Node.js/npm: not required.
 >>"%OUTPUT_FILE%" echo.
->>"%OUTPUT_FILE%" echo Detected:
->>"%OUTPUT_FILE%" echo - %PYTHON_DETAILS%
->>"%OUTPUT_FILE%" echo - Browser: %BROWSER_DETAILS%
->>"%OUTPUT_FILE%" echo - Prebuilt viewer files: present
+>>"%OUTPUT_FILE%" echo Next: return to the main folder and open Start_Viewer.
+goto show_report
 
 :write_footer
->>"%OUTPUT_FILE%" echo Node.js and npm are not required for the shipped viewer.
->>"%OUTPUT_FILE%" echo Run this checker again after installations or package replacement.
+>>"%OUTPUT_FILE%" echo After resolving the items above, run this checker again.
 
+:show_report
 echo.
 type "%OUTPUT_FILE%"
 echo.

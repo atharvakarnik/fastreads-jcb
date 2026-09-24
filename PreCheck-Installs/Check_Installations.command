@@ -24,7 +24,7 @@ check_python() {
         python_details="$($candidate --version 2>&1) ($candidate)"
         return
       fi
-      python_details="$($candidate --version 2>&1) ($candidate; Python 3.10 or newer is required)"
+      python_details="$($candidate --version 2>&1) ($candidate)"
     fi
   done
 }
@@ -71,39 +71,38 @@ if [ "$python_ok" -ne 1 ] || [ "$browser_ok" -ne 1 ] || [ "$package_ok" -ne 1 ];
 fi
 
 {
-  printf 'FastReads-JCB installation check\n'
-  printf 'Generated: %s\n' "$(date)"
-  printf 'Platform: %s\n\n' "$(uname -s 2>/dev/null || printf 'Unknown')"
+  printf 'FASTREADS-JCB PRECHECK\n\n'
 
   if [ "$needs_action" -eq 0 ]; then
-    printf 'RESULT: No additional software installation is required.\n\n'
-    printf 'Detected:\n'
-    printf -- '- %s\n' "$python_details"
-    printf -- '- Browser: %s\n' "$browser_details"
-    printf -- '- Prebuilt viewer files: present\n'
+    printf 'READY - no software installation is needed.\n'
+    printf 'Found: %s; %s\n' "$python_details" "$browser_details"
+    printf 'Node.js/npm: not required.\n\n'
+    printf 'Next: return to the main folder and open Start_Viewer.\n'
   else
-    printf 'RESULT: Action is required before the viewer can run.\n\n'
+    printf 'ACTION NEEDED\n\n'
 
     if [ "$python_ok" -ne 1 ] || [ "$browser_ok" -ne 1 ]; then
-      printf 'Install or update through IT:\n'
+      printf 'IT: Install or update:\n'
       if [ "$python_ok" -ne 1 ]; then
-        printf -- '- Python 3.10 or newer, including the python3/python command on PATH.\n'
-        printf '  Current result: %s\n' "$python_details"
+        printf -- '- Python 3.10+; make python3 or python available on PATH.\n'
+        printf '  Found: %s\n' "$python_details"
       fi
       if [ "$browser_ok" -ne 1 ]; then
-        printf -- '- A current version of Chrome, Edge, Firefox, or Safari with WebGL2 support.\n'
+        printf -- '- Current Chrome, Edge, Firefox, or Safari with WebGL2.\n'
       fi
+      printf 'Node.js/npm: not required.\n'
       printf '\n'
+    else
+      printf 'No software installation is needed.\n\n'
     fi
 
     if [ "$package_ok" -ne 1 ]; then
-      printf 'Viewer package issue:\n'
-      printf -- '- ui/dist/index.html is missing. Obtain a complete FastReads-JCB shipment.\n\n'
+      printf 'VIEWER PACKAGE ISSUE:\n'
+      printf -- '- Missing ui/dist/index.html. Replace this with a complete shipment.\n\n'
     fi
-  fi
 
-  printf 'Node.js and npm are not required for the shipped viewer.\n'
-  printf 'Run this checker again after installations or package replacement.\n'
+    printf 'After resolving the items above, run this checker again.\n'
+  fi
 } > "$TEMP_FILE"
 
 mv "$TEMP_FILE" "$OUTPUT_FILE"
