@@ -13,6 +13,8 @@ dist/
 ui/node_modules/
 ui/dist/
 shipment/
+/PreCheck-Installs/install_this.txt
+/PreCheck-Installs/install_this.txt.tmp
 
 # Python
 __pycache__/

@@ -9,6 +9,18 @@ FastReads JCB runs locally on the computer and does not upload data or require a
 
 Node.js and npm are not required for the distributed viewer.
 
+## Check this computer
+
+Open the `PreCheck-Installs` folder and run the installation checker for this
+computer. It overwrites `install_this.txt` in the same folder with either a short
+list for an IT ticket or confirmation that the computer is ready:
+
+- **macOS:** double-click `Check_Installations.command`.
+- **Windows:** double-click `Check_Installations.bat`.
+- **Linux:** run `bash Check_Installations.command` from a terminal.
+
+The checker itself does not require Python, Node.js, or another installed runtime.
+
 Raise a ticket to IT (_or DIY_) to install Python for all users (in your PC/Laptop) and make the `python3` command available on macOS/Linux or the `py`/`python` command available on Windows.
 
 ## Set up the viewer
@@ -33,7 +45,11 @@ fastreads-jcb/
 |   `-- dist/
 |-- Start_Viewer.command
 |-- Start_Viewer.sh
-`-- Start_Viewer.bat
+|-- Start_Viewer.bat
+`-- PreCheck-Installs/
+    |-- INSTALLATIONS.md
+    |-- Check_Installations.command
+    `-- Check_Installations.bat
 ```
 
 Each imaging folder may contain exactly one `.nii` or `.nii.gz` file. A subject may omit resources that are unavailable. Reports may be supplied as DICOM pages inside `pdf/` or as `report.pdf` beside the modality folders.

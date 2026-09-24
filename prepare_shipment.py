@@ -22,7 +22,9 @@ RUNTIME_FILES = (
     "Start_Viewer.sh",
     "Start_Viewer.command",
     "Start_Viewer.bat",
-    "INSTALLATIONS.md",
+    "PreCheck-Installs/Check_Installations.command",
+    "PreCheck-Installs/Check_Installations.bat",
+    "PreCheck-Installs/INSTALLATIONS.md",
 )
 
 
@@ -74,7 +76,9 @@ def copy_runtime_tree(destination):
     app_dir = destination / "fastreads-jcb"
     app_dir.mkdir()
     for name in RUNTIME_FILES:
-        shutil.copy2(BASE_DIR / name, app_dir / name)
+        destination_path = app_dir / name
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(BASE_DIR / name, destination_path)
     shutil.copytree(DIST_DIR, app_dir / "ui" / "dist")
     return app_dir
 
@@ -92,7 +96,13 @@ def write_zip(staging_dir, target):
 
 
 def verify_zip(path):
-    forbidden = {"prepare_shipment.py", "package.json", "package-lock.json", "AGENT.md"}
+    forbidden = {
+        "prepare_shipment.py",
+        "package.json",
+        "package-lock.json",
+        "AGENT.md",
+        "install_this.txt",
+    }
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         required = {
@@ -100,7 +110,9 @@ def verify_zip(path):
             "fastreads-jcb/Start_Viewer.sh",
             "fastreads-jcb/Start_Viewer.command",
             "fastreads-jcb/Start_Viewer.bat",
-            "fastreads-jcb/INSTALLATIONS.md",
+            "fastreads-jcb/PreCheck-Installs/Check_Installations.command",
+            "fastreads-jcb/PreCheck-Installs/Check_Installations.bat",
+            "fastreads-jcb/PreCheck-Installs/INSTALLATIONS.md",
             "fastreads-jcb/ui/dist/index.html",
         }
         missing = required - names
