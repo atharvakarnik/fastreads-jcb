@@ -14,16 +14,17 @@ if not errorlevel 1 (
 
 %PY% --version >nul 2>&1
 if errorlevel 1 (
-  echo Python 3.10+ is required but no Python interpreter was found.
-  echo https://www.python.org/downloads/
+  echo Required installation missing: Python 3.10 or newer.
+  echo See installations.txt in this folder for IT or DIY instructions.
   pause
   exit /b 1
 )
 
 %PY% -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
 if errorlevel 1 (
-  echo Python 3.10+ is required.
+  echo Installed Python is too old. Python 3.10 or newer is required.
   %PY% --version
+  echo See installations.txt in this folder for IT or DIY instructions.
   pause
   exit /b 1
 )

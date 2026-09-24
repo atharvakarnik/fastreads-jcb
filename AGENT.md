@@ -20,10 +20,7 @@ fastreads-jcb/
 ├── server.py
 ├── reviews.json             # generated locally; ignored by Git
 ├── prepare_shipment.py      # maintainer-only release builder
-├── PreCheck-Installs/
-│   ├── INSTALLATIONS.md
-│   ├── Check_Installations.command
-│   └── Check_Installations.bat
+├── installations.txt        # static end-user and IT requirements
 ├── Start_Viewer.sh
 ├── Start_Viewer.command
 ├── Start_Viewer.bat
@@ -37,7 +34,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 ```
 
-Do not add environment variables, `.env` files, command-line data-path configuration, or automatic data-folder creation. Keep `data/`, `reviews.json`, `install_this.txt`, and `shipment/` ignored by Git.
+Do not add environment variables, `.env` files, command-line data-path configuration, or automatic data-folder creation. Keep `data/`, `reviews.json`, and `shipment/` ignored by Git.
 
 ## Data contract
 
@@ -113,7 +110,7 @@ Do not:
 
 ## Launch, shipment, and checks
 
-The platform launchers use the prebuilt frontend in `ui/dist/` and start `server.py`. They must not require Node.js, npm, dependency installation, or a frontend build. On macOS, `Start_Viewer.command` delegates to `Start_Viewer.sh`; Windows uses `Start_Viewer.bat`.
+The platform launchers use the prebuilt frontend in `ui/dist/` and start `server.py`. They must not require Node.js, npm, dependency installation, or a frontend build. On macOS, `Start_Viewer.command` delegates to `Start_Viewer.sh`; Windows uses `Start_Viewer.bat`. Missing or outdated Python errors must identify the requirement and direct the user to root-level `installations.txt`.
 
 For development builds:
 
@@ -129,7 +126,7 @@ Create user-facing releases only through:
 python3 prepare_shipment.py
 ```
 
-The shipment command requires a clean Git working tree, installs the exact locked frontend dependencies, builds `ui/dist/` fresh, and atomically replaces `shipment/fastreads-jcb.zip`. It writes release metadata to `shipment/BUILD_INFO.txt`. By default, the ZIP contains only the backend, platform launchers, `PreCheck-Installs/`, and the prebuilt frontend. The checkers overwrite an ignored `PreCheck-Installs/install_this.txt` report and must work without Python. The ZIP must not contain source-only files, Node.js dependencies, Git metadata, generated checker reports, or review files.
+The shipment command requires a clean Git working tree, installs the exact locked frontend dependencies, builds `ui/dist/` fresh, and atomically replaces `shipment/fastreads-jcb.zip`. It writes release metadata to `shipment/BUILD_INFO.txt`. By default, the ZIP contains only the backend, platform launchers, `installations.txt`, and the prebuilt frontend. The ZIP must not contain source-only files, Node.js dependencies, Git metadata, or review files.
 
 Use `python3 prepare_shipment.py --include-data` only when the intended shipment must contain the ignored local `data/` tree. This opt-in requires a nonempty `data/`, rejects symbolic links, records `Data included: yes` in `BUILD_INFO.txt`, and makes the resulting ZIP sensitive medical data. The default command must continue to exclude data.
 

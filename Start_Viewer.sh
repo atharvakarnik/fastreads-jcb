@@ -10,13 +10,15 @@ RUN_URL="${URL}?v=$(date +%s)"
 SERVER_PID=""
 
 if ! command -v "$PY" >/dev/null 2>&1; then
-  echo "Python 3.10+ is required but no Python interpreter was found."
+  echo "Required installation missing: Python 3.10 or newer."
+  echo "See installations.txt in this folder for IT or DIY instructions."
   exit 1
 fi
 
 if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
-  echo "Python 3.10+ is required."
+  echo "Installed Python is too old. Python 3.10 or newer is required."
   "$PY" --version 2>/dev/null || true
+  echo "See installations.txt in this folder for IT or DIY instructions."
   exit 1
 fi
 

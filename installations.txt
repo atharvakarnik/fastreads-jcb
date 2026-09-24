@@ -1,0 +1,30 @@
+FASTREADS-JCB INSTALLATION REQUIREMENTS
+
+If the viewer starts normally, no installation action is needed. Use this file
+only if the launcher reports missing or outdated software.
+
+Required software:
+
+1. Python 3.10 or newer
+   macOS/Linux: python3 or python must be available on PATH.
+   Windows: py -3 or python must be available on PATH.
+
+2. A current browser with WebGL2 support
+   Chrome, Edge, Firefox, or Safari.
+
+Not required:
+
+- Node.js
+- npm
+- Additional Python packages
+
+For an IT ticket:
+
+Install Python 3.10 or newer for the user and make the command above available
+on PATH. Ensure that one supported browser is installed and current.
+
+After installation, return to the main viewer folder and run:
+
+- macOS: Start_Viewer.command
+- Windows: Start_Viewer.bat
+- Linux: bash Start_Viewer.sh

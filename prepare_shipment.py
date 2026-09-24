@@ -23,9 +23,7 @@ RUNTIME_FILES = (
     "Start_Viewer.sh",
     "Start_Viewer.command",
     "Start_Viewer.bat",
-    "PreCheck-Installs/Check_Installations.command",
-    "PreCheck-Installs/Check_Installations.bat",
-    "PreCheck-Installs/INSTALLATIONS.md",
+    "installations.txt",
 )
 
 
@@ -114,7 +112,6 @@ def verify_zip(path, include_data=False):
         "package.json",
         "package-lock.json",
         "AGENT.md",
-        "install_this.txt",
     }
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
@@ -123,9 +120,7 @@ def verify_zip(path, include_data=False):
             "fastreads-jcb/Start_Viewer.sh",
             "fastreads-jcb/Start_Viewer.command",
             "fastreads-jcb/Start_Viewer.bat",
-            "fastreads-jcb/PreCheck-Installs/Check_Installations.command",
-            "fastreads-jcb/PreCheck-Installs/Check_Installations.bat",
-            "fastreads-jcb/PreCheck-Installs/INSTALLATIONS.md",
+            "fastreads-jcb/installations.txt",
             "fastreads-jcb/ui/dist/index.html",
         }
         missing = required - names

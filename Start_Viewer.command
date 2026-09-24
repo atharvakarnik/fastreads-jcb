@@ -15,6 +15,7 @@ STATUS=$?
 if [ "$STATUS" -ne 0 ]; then
   echo ""
   echo "FastReads JCB did not start successfully."
+  echo "For software requirements, see installations.txt in this folder."
   read -r -p "Press Return to close this window..."
 fi
 
